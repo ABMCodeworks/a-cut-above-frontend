@@ -7,9 +7,9 @@ const { Title, Text, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
 
 const ABOUT_IMAGES = [
-  "/about/about-1.jpeg",
-  "/about/about-2.jpeg",
-  "/about/about-3.jpeg",
+  "/about/about-1.webp",
+  "/about/about-2.webp",
+  "/about/about-3.webp",
 ];
 
 export default function AboutPage() {
