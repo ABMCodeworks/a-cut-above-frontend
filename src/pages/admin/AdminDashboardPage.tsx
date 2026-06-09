@@ -18,6 +18,7 @@ import WasteManagementTab from "../../components/WasteManagementTab";
 export type AdminCategory = {
   id: string;
   name: string;
+  description?: string | null;
   key: string;
   iconKey: string;
   sortOrder: number;
@@ -246,6 +247,14 @@ export default function AdminDashboardPage() {
     return products.reduce((sum, p) => sum + toNumber(p.totalWasteValue), 0);
   }, [products]);
 
+  const activeOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => String(order.status || "").toUpperCase() !== "DELIVERED",
+      ),
+    [orders],
+  );
+
   const logout = useCallback(async () => {
     try {
       await api.post("/api/admin/auth/logout");
@@ -289,10 +298,10 @@ export default function AdminDashboardPage() {
     <AdminShell>
       <Tabs
         defaultActiveKey={
-          canViewOrders
-            ? "orders"
-            : canViewDashboard
-              ? "dashboard"
+          canViewDashboard
+            ? "dashboard"
+            : canViewOrders
+              ? "orders"
               : canViewProducts
                 ? "products"
                 : canViewWaste
@@ -312,7 +321,7 @@ export default function AdminDashboardPage() {
                 children: (
                   <DashboardTab
                     loading={loading}
-                    orders={orders}
+                    orders={activeOrders}
                     products={products}
                     windows={windows}
                     carcassWeights={carcassWeights}
@@ -334,38 +343,6 @@ export default function AdminDashboardPage() {
                     orders={orders}
                     onReload={loadAll}
                     permissions={myPermissions}
-                  />
-                ),
-              },
-            ]
-            : []),
-          ...(canViewProducts
-            ? [
-              {
-                key: "products",
-                label: "Products",
-                children: (
-                  <ProductsTab
-                    loading={loading}
-                    products={products}
-                    categories={categories}
-                    onReload={loadAll}
-                  />
-                ),
-              },
-            ]
-            : []),
-
-          ...(canViewCategories
-            ? [
-              {
-                key: "categories",
-                label: "Categories",
-                children: (
-                  <CategoriesTab
-                    loading={loading}
-                    categories={categories}
-                    onReload={loadAll}
                   />
                 ),
               },
@@ -394,6 +371,39 @@ export default function AdminDashboardPage() {
                     loading={loading}
                     records={carcassWeights}
                     permissions={myPermissions}
+                    onReload={loadAll}
+                  />
+                ),
+              },
+            ]
+            : []),
+
+          ...(canViewProducts
+            ? [
+              {
+                key: "products",
+                label: "Products",
+                children: (
+                  <ProductsTab
+                    loading={loading}
+                    products={products}
+                    categories={categories}
+                    onReload={loadAll}
+                  />
+                ),
+              },
+            ]
+            : []),
+
+          ...(canViewCategories
+            ? [
+              {
+                key: "categories",
+                label: "Categories",
+                children: (
+                  <CategoriesTab
+                    loading={loading}
+                    categories={categories}
                     onReload={loadAll}
                   />
                 ),

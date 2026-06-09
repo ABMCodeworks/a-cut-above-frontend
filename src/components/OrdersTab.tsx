@@ -14,6 +14,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Switch,
@@ -106,11 +107,31 @@ function money(v: any) {
 function fmtDate(dt?: string | null) {
   if (!dt) return "—";
   const d = dayjs(dt);
-  return d.isValid() ? d.format("D MMM YYYY") : "—";
+  return d.isValid() ? d.format("D MMM YYYY, HH:mm") : "—";
 }
 
 function isKgItem(it: AdminOrderItem) {
   return String((it as any).unit || "").toLowerCase() === "kg";
+}
+
+function orderLocationName(order: AdminOrder) {
+  return String((order as any).dropoffLocation?.name || "").trim();
+}
+
+function orderAddress(order: AdminOrder) {
+  const address = String((order as any).personalAddress || "").trim();
+  return address;
+}
+
+function itemAmountForList(it: AdminOrderItem) {
+  if (isKgItem(it)) {
+    const weight = Number((it as any).weightKg || 0);
+    return Number.isFinite(weight) && weight > 0
+      ? `${weight.toFixed(3)} kg`
+      : `${Number((it as any).qty || 0)} pack(s)`;
+  }
+
+  return Number((it as any).qty || 0);
 }
 
 function recomputeOrderClient(order: AdminOrder) {
@@ -164,7 +185,7 @@ function parseExistingWeights(item: any): WeightEntry[] {
     const qty = Math.max(0, Math.round(Number(item.qty || 0)));
     return Array.from({ length: qty }, () => ({
       value: undefined,
-      unit: "kg" as const,
+      unit: "g" as const,
     }));
   }
 
@@ -177,7 +198,7 @@ function parseExistingWeights(item: any): WeightEntry[] {
   const qty = Math.max(0, Math.round(Number(item.qty || 0)));
 
   while (parsed.length < qty) {
-    parsed.push({ value: undefined, unit: "kg" });
+    parsed.push({ value: undefined, unit: "g" });
   }
 
   return parsed.slice(0, qty);
@@ -246,7 +267,7 @@ function PackingItemRow({
             {Array.from({ length: qty }).map((_, idx) => {
               const entry = state.weights[idx] || {
                 value: undefined,
-                unit: "kg" as const,
+                unit: "g" as const,
               };
 
               return (
@@ -625,6 +646,7 @@ export default function OrdersTab({
   const [displayOrders, setDisplayOrders] = useState([] as AdminOrder[]);
   const [schedules, setSchedules] = useState([] as DeliverySchedule[]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([] as React.Key[]);
+  const [orderView, setOrderView] = useState<"active" | "archive">("active");
 
   const [filterLocationId, setFilterLocationId] = useState("");
   const [filterScheduleId, setFilterScheduleId] = useState("");
@@ -664,6 +686,7 @@ export default function OrdersTab({
   const [createCustomerName, setCreateCustomerName] = useState("");
   const [createCustomerPhone, setCreateCustomerPhone] = useState("");
   const [createCustomerEmail, setCreateCustomerEmail] = useState("");
+  const [createPersonalAddress, setCreatePersonalAddress] = useState("");
   const [createPricingTier, setCreatePricingTier] = useState<
     "RETAIL" | "WHOLESALE"
   >("RETAIL");
@@ -762,6 +785,15 @@ export default function OrdersTab({
   const grouped = useMemo((): LocationGroup[] => {
     const filteredOrders = displayOrders.filter((o) => {
       const anyO = o as any;
+      const isArchived = String(o.status || "").toUpperCase() === "DELIVERED";
+
+      if (orderView === "active" && isArchived) {
+        return false;
+      }
+
+      if (orderView === "archive" && !isArchived) {
+        return false;
+      }
 
       if (filterLocationId && anyO.dropoffLocationId !== filterLocationId) {
         return false;
@@ -812,7 +844,7 @@ export default function OrdersTab({
     return Array.from(byLocation.values()).sort((a, b) =>
       a.locationName.localeCompare(b.locationName),
     );
-  }, [displayOrders, schedules, filterLocationId, filterScheduleId]);
+  }, [displayOrders, schedules, filterLocationId, filterScheduleId, orderView]);
 
   async function handleDelete(orderId: string, orderNo: string) {
     try {
@@ -1072,7 +1104,42 @@ export default function OrdersTab({
       setSelectedRowKeys([]);
       setBulkOpen(false);
     } catch (e: any) {
-      message.error(e?.response?.data?.error || "Bulk status update failed");
+      message.error(e?.response?.data?.error || "Order status update failed");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function markSelectedDelivered() {
+    if (selectedRowKeys.length === 0) {
+      message.warning("Select at least one order");
+      return;
+    }
+
+    setBulkStatus("DELIVERED");
+    setBulkLoading(true);
+
+    try {
+      await api.put("/api/admin/orders/status/bulk", {
+        ids: selectedRowKeys.map(String),
+        status: "DELIVERED",
+        sendWhatsApp,
+      });
+
+      setDisplayOrders((prev) =>
+        prev.map((o) =>
+          selectedRowKeys.includes(o.id)
+            ? ({ ...o, status: "DELIVERED" } as any)
+            : o,
+        ),
+      );
+
+      message.success(
+        `Marked ${selectedRowKeys.length} order(s) delivered and moved to archive`,
+      );
+      setSelectedRowKeys([]);
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || "Status update failed");
     } finally {
       setBulkLoading(false);
     }
@@ -1111,6 +1178,7 @@ export default function OrdersTab({
         pricingTier: createPricingTier,
         dropoffLocationId: createDropoffLocationId,
         deliveryScheduleId: createDeliveryScheduleId,
+        personalAddress: createPersonalAddress.trim(),
         notes: createNotes.trim(),
         items: validItems,
       });
@@ -1121,6 +1189,7 @@ export default function OrdersTab({
       setCreateCustomerName("");
       setCreateCustomerPhone("");
       setCreateCustomerEmail("");
+      setCreatePersonalAddress("");
       setCreatePricingTier("RETAIL");
       setCreateDropoffLocationId("");
       setCreateDeliveryScheduleId("");
@@ -1234,6 +1303,132 @@ export default function OrdersTab({
     setPackingOpen(false);
   }
 
+  function exportDeliveryList() {
+    const ordersToExport = displayOrders.filter((o) => {
+      if (deliveryRunLocationId) {
+        if (String((o as any).dropoffLocationId || "") !== deliveryRunLocationId) {
+          return false;
+        }
+      }
+
+      if (deliveryRunScheduleId) {
+        if (
+          String((o as any).deliveryScheduleId || "") !== deliveryRunScheduleId
+        ) {
+          return false;
+        }
+      }
+
+      return String(o.status || "").toUpperCase() !== "DELIVERED";
+    });
+
+    const targetSchedule = deliveryRunScheduleId
+      ? schedules.find((s) => s.id === deliveryRunScheduleId)
+      : null;
+
+    if (!ordersToExport.length) {
+      message.warning("No active orders to export");
+      return;
+    }
+
+    const productSet = new Set<string>();
+
+    for (const order of ordersToExport) {
+      for (const item of order.items || []) {
+        const name = String((item as any).productName || "").trim();
+        if (name) productSet.add(name);
+      }
+    }
+
+    const productNames = Array.from(productSet).sort((a, b) =>
+      a.localeCompare(b),
+    );
+
+    const headers = [
+      "Customer",
+      "Phone",
+      "Address",
+      "Order No",
+      "Location",
+      ...productNames,
+      "Order Total",
+    ];
+    const rows: any[][] = [];
+    const totals: Record<string, number> = {};
+    let grandTotal = 0;
+
+    for (const productName of productNames) {
+      totals[productName] = 0;
+    }
+
+    for (const order of ordersToExport) {
+      const qtyByProduct: Record<string, any> = {};
+
+      for (const item of order.items || []) {
+        const name = String((item as any).productName || "").trim();
+        if (!name) continue;
+
+        const amount = itemAmountForList(item);
+        qtyByProduct[name] = amount;
+
+        const numericAmount = isKgItem(item)
+          ? Number((item as any).weightKg || 0)
+          : Number((item as any).qty || 0);
+
+        totals[name] += Number.isFinite(numericAmount) ? numericAmount : 0;
+      }
+
+      const orderTotal = Number((order as any).total || 0);
+      grandTotal += Number.isFinite(orderTotal) ? orderTotal : 0;
+
+      rows.push([
+        order.customerName ?? "",
+        order.customerPhone ?? "",
+        orderAddress(order),
+        order.orderNo ?? "",
+        orderLocationName(order),
+        ...productNames.map((productName) => qtyByProduct[productName] || ""),
+        orderTotal,
+      ]);
+    }
+
+    const totalsRow = [
+      "TOTALS",
+      "",
+      "",
+      "",
+      "",
+      ...productNames.map((productName) => totals[productName] || 0),
+      grandTotal,
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], totalsRow]);
+
+    (ws as any)["!cols"] = [
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 32 },
+      { wch: 18 },
+      { wch: 18 },
+      ...productNames.map((productName) => ({
+        wch: Math.max(12, Math.min(32, productName.length + 2)),
+      })),
+      { wch: 14 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Delivery List");
+
+    const label = targetSchedule
+      ? `${targetSchedule.dropoffLocation.name}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
+          .replace(/\s+/g, "-")
+          .replace(/,/g, "")
+      : `delivery-list_${dayjs().format("YYYY-MM-DD")}`;
+
+    XLSX.writeFile(wb, `delivery-list_${label}.xlsx`);
+    message.success(`Exported ${ordersToExport.length} active orders`);
+  }
+
   function exportDeliveryRunPdf() {
     const params = new URLSearchParams();
 
@@ -1257,7 +1452,7 @@ export default function OrdersTab({
     },
     {
       key: "bulk",
-      label: "Bulk status",
+      label: "Order status",
       icon: <SettingOutlined />,
       onClick: () => setBulkOpen(true),
     },
@@ -1269,7 +1464,7 @@ export default function OrdersTab({
     },
     {
       key: "delivery-run-pdf",
-      label: "Delivery Run PDF",
+      label: "Delivery notes PDF",
       icon: <FilePdfOutlined />,
       onClick: () => setDeliveryRunOpen(true),
     },
@@ -1412,7 +1607,7 @@ export default function OrdersTab({
             }}
           >
             <Title level={4} style={{ margin: 0 }}>
-              Orders
+              {orderView === "archive" ? "Order Archive" : "Orders"}
             </Title>
 
             <Button
@@ -1432,6 +1627,19 @@ export default function OrdersTab({
             }}
           >
             <Space wrap>
+              <Segmented
+                value={orderView}
+                onChange={(v) => {
+                  setOrderView(v as "active" | "archive");
+                  setSelectedRowKeys([]);
+                  setExpandedRowKeys([]);
+                }}
+                options={[
+                  { label: "Active", value: "active" },
+                  { label: "Archive", value: "archive" },
+                ]}
+              />
+
               <Select
                 allowClear
                 placeholder="Filter by location"
@@ -1469,7 +1677,8 @@ export default function OrdersTab({
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "140px minmax(180px, 220px) auto auto",
+                    gridTemplateColumns:
+                      "140px minmax(180px, 220px) auto auto auto",
                     gap: 12,
                     alignItems: "center",
                   }}
@@ -1478,7 +1687,7 @@ export default function OrdersTab({
                     color="purple"
                     style={{ margin: 0, justifySelf: "start" }}
                   >
-                    Bulk status
+                    Order status
                   </Tag>
 
                   <Select
@@ -1503,6 +1712,15 @@ export default function OrdersTab({
                     style={{ justifySelf: "start" }}
                   >
                     Apply to selected ({selectedRowKeys.length})
+                  </Button>
+
+                  <Button
+                    onClick={markSelectedDelivered}
+                    loading={bulkLoading}
+                    disabled={selectedRowKeys.length === 0}
+                    style={{ justifySelf: "start" }}
+                  >
+                    Mark selected delivered
                   </Button>
                 </div>
               </Card>
@@ -1551,13 +1769,13 @@ export default function OrdersTab({
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "140px minmax(180px, 220px) minmax(260px, 320px) auto",
+                      "140px minmax(180px, 220px) minmax(260px, 320px) auto auto",
                     gap: 12,
                     alignItems: "center",
                   }}
                 >
                   <Tag color="blue" style={{ margin: 0, justifySelf: "start" }}>
-                    Delivery run PDF
+                    Delivery notes PDF
                   </Tag>
 
                   <Select
@@ -1582,11 +1800,19 @@ export default function OrdersTab({
                   />
 
                   <Button
+                    icon={<DownloadOutlined />}
+                    onClick={exportDeliveryList}
+                    style={{ justifySelf: "start" }}
+                  >
+                    Delivery list
+                  </Button>
+
+                  <Button
                     icon={<FilePdfOutlined />}
                     onClick={exportDeliveryRunPdf}
                     style={{ justifySelf: "start" }}
                   >
-                    Export PDF
+                    Delivery notes
                   </Button>
                 </div>
               </Card>
@@ -1596,25 +1822,40 @@ export default function OrdersTab({
       ) : (
         <div
           style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
+            display: "grid",
+            gap: 10,
             marginBottom: 16,
           }}
         >
-          <Title level={4} style={{ margin: 0, flex: 1 }}>
-            Orders
-          </Title>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Title level={4} style={{ margin: 0, flex: 1 }}>
+              {orderView === "archive" ? "Archive" : "Orders"}
+            </Title>
 
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setCreateOrderOpen(true)}
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setCreateOrderOpen(true)}
+            />
+
+            <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
+              <Button icon={<FilterOutlined />}>Actions</Button>
+            </Dropdown>
+          </div>
+
+          <Segmented
+            block
+            value={orderView}
+            onChange={(v) => {
+              setOrderView(v as "active" | "archive");
+              setSelectedRowKeys([]);
+              setExpandedRowKeys([]);
+            }}
+            options={[
+              { label: "Active", value: "active" },
+              { label: "Archive", value: "archive" },
+            ]}
           />
-
-          <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
-            <Button icon={<FilterOutlined />}>Actions</Button>
-          </Dropdown>
         </div>
       )}
 
@@ -1646,7 +1887,7 @@ export default function OrdersTab({
       )}
 
       <Drawer
-        title="Bulk status"
+        title="Order status"
         placement="bottom"
         height="50vh"
         open={bulkOpen}
@@ -1674,6 +1915,16 @@ export default function OrdersTab({
             block
           >
             Apply to selected ({selectedRowKeys.length})
+          </Button>
+
+          <Button
+            size="large"
+            onClick={markSelectedDelivered}
+            loading={bulkLoading}
+            disabled={selectedRowKeys.length === 0}
+            block
+          >
+            Mark selected delivered
           </Button>
         </div>
       </Drawer>
@@ -1712,7 +1963,7 @@ export default function OrdersTab({
       </Drawer>
 
       <Drawer
-        title="Export delivery run PDF"
+        title="Export delivery notes"
         placement="bottom"
         height="60vh"
         open={deliveryRunOpen}
@@ -1745,11 +1996,20 @@ export default function OrdersTab({
           <Button
             type="primary"
             size="large"
+            icon={<DownloadOutlined />}
+            onClick={exportDeliveryList}
+            block
+          >
+            Export delivery list
+          </Button>
+
+          <Button
+            size="large"
             icon={<FilePdfOutlined />}
             onClick={exportDeliveryRunPdf}
             block
           >
-            Export PDF
+            Export delivery notes
           </Button>
         </div>
       </Drawer>
@@ -1974,6 +2234,15 @@ export default function OrdersTab({
                 value={createCustomerEmail}
                 onChange={(e) => setCreateCustomerEmail(e.target.value)}
                 placeholder="Optional"
+              />
+            </div>
+
+            <div>
+              <Text type="secondary">Delivery address</Text>
+              <Input
+                value={createPersonalAddress}
+                onChange={(e) => setCreatePersonalAddress(e.target.value)}
+                placeholder="Required for Mutare deliveries"
               />
             </div>
 

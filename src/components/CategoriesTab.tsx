@@ -113,7 +113,7 @@ export default function CategoriesTab({
           New Category
         </Button>
       }
-      bodyStyle={{ padding: isMobile ? 12 : undefined }}
+      styles={{ body: { padding: isMobile ? 12 : undefined } }}
     >
       <Table
         loading={loading}
@@ -216,7 +216,7 @@ export default function CategoriesTab({
         cancelButtonProps={{ size: isMobile ? "large" : "middle" }}
         width={isMobile ? "100%" : 720}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
-        bodyStyle={isMobile ? { padding: 12 } : undefined}
+        styles={isMobile ? { body: { padding: 12 } } : undefined}
       >
         <Form layout="vertical" form={form}>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>

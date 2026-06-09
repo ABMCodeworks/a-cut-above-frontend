@@ -241,7 +241,7 @@ export default function WindowsTab({
 
   return (
     <Card
-      bodyStyle={{ padding: isMobile ? 12 : undefined }}
+      styles={{ body: { padding: isMobile ? 12 : undefined } }}
       extra={
         isMobile ? (
           // ✅ Mobile header: stacked + full-width CTA
@@ -293,7 +293,7 @@ export default function WindowsTab({
         okText="Save"
         width={isMobile ? "100%" : 720}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
-        bodyStyle={isMobile ? { padding: 12 } : undefined}
+        styles={isMobile ? { body: { padding: 12 } } : undefined}
         okButtonProps={{ size: isMobile ? "large" : "middle" }}
         cancelButtonProps={{ size: isMobile ? "large" : "middle" }}
       >

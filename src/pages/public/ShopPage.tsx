@@ -63,11 +63,23 @@ type DropoffLocation = {
   } | null;
 };
 
+type ShopCategory = {
+  id: string;
+  name: string;
+  description?: string | null;
+  iconKey: string;
+};
+
 type PricedProduct = Product & {
   pricePerKg?: number | null;
   pricePerPack?: number | null;
   packSizeKg?: number | null;
-  category?: { id: string; name: string; iconKey: string } | null;
+  category?: {
+    id: string;
+    name: string;
+    description?: string | null;
+    iconKey: string;
+  } | null;
   imageUrl?: string | null;
   cutType?: string | null;
   avgWeightG?: number | null;
@@ -161,6 +173,7 @@ export default function ShopPage() {
   const [showBackToTop, setShowBackToTop] = useState(false);
 
   const [products, setProducts] = useState([] as PricedProduct[]);
+  const [categories, setCategories] = useState<ShopCategory[]>([]);
   const [loading, setLoading] = useState(false);
   const [windowState, setWindowState] = useState<WindowState>({
     open: true,
@@ -239,10 +252,11 @@ export default function ShopPage() {
     setLoading(true);
 
     try {
-      const [wRes, pRes, lRes] = await Promise.all([
+      const [wRes, pRes, lRes, cRes] = await Promise.all([
         api.get("/api/public/order-window"),
         api.get("/api/public/products"),
         api.get("/api/public/dropoff-locations"),
+        api.get("/api/public/categories"),
       ]);
 
       setWindowState(wRes.data);
@@ -312,6 +326,15 @@ export default function ShopPage() {
               : Number(p.avgWeightG),
         })),
       );
+
+      setCategories(
+        ((cRes.data?.categories || []) as any[]).map((c) => ({
+          id: String(c.id),
+          name: String(c.name),
+          description: c.description ?? null,
+          iconKey: String(c.iconKey || "steak"),
+        })),
+      );
     } catch (e: any) {
       console.error(e);
       message.error(e?.response?.data?.error || e?.message || "Failed to load");
@@ -358,14 +381,33 @@ export default function ShopPage() {
     "Unfortunately there are no deliveries to that location at the current moment, please check back in moment as the issue should be resolved shortly.";
 
   const categoryDefs = useMemo(() => {
-    const map: Map<string, { key: string; label: string; iconKey: string }> =
-      new Map();
+    const map: Map<
+      string,
+      {
+        key: string;
+        label: string;
+        description: string | null;
+        iconKey: string;
+      }
+    > = new Map();
+
+    for (const c of categories) {
+      if (!c.id) continue;
+
+      map.set(c.id, {
+        key: c.id,
+        label: c.name,
+        description: c.description?.trim() || null,
+        iconKey: c.iconKey,
+      });
+    }
 
     for (const p of products) {
-      if (p.category?.id) {
+      if (p.category?.id && !map.has(p.category.id)) {
         map.set(p.category.id, {
           key: p.category.id,
           label: p.category.name,
+          description: p.category.description?.trim() || null,
           iconKey: p.category.iconKey,
         });
       }
@@ -375,8 +417,28 @@ export default function ShopPage() {
       a.label.localeCompare(b.label),
     );
 
-    return [{ key: "all", label: "All", iconKey: "__ALL__" }, ...list];
-  }, [products]);
+    return [
+      { key: "all", label: "All", description: null, iconKey: "__ALL__" },
+      ...list,
+    ];
+  }, [categories, products]);
+
+  const activeCategoryInfo = useMemo(() => {
+    if (activeCat === "all") return null;
+
+    const selected = categoryDefs.find((c) => c.key === activeCat);
+    const description = selected?.description?.trim();
+
+    if (!selected || !description) return null;
+
+    return {
+      title: selected.label,
+      paragraphs: description
+        .split(/\n+/)
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean),
+    };
+  }, [activeCat, categoryDefs]);
 
   const filtered = useMemo(() => {
     let list = products;
@@ -683,6 +745,7 @@ export default function ShopPage() {
       >
         {!isMobile ? (
           <aside
+            className="aca-shopSidebar"
             style={{
               position: showSummary ? "sticky" : "static",
               top: showSummary ? SIDEBAR_STICKY_TOP : undefined,
@@ -726,7 +789,9 @@ export default function ShopPage() {
             </div>
 
             {showSummary ? (
-              <div className="aca-sidebarCard" style={{ marginTop: 14 }}>
+              <div
+                className="aca-sidebarCard aca-orderSummaryCard"
+              >
                 <div
                   style={{
                     display: "flex",
@@ -748,7 +813,7 @@ export default function ShopPage() {
                 {items.length === 0 ? (
                   <Text type="secondary">No items yet.</Text>
                 ) : (
-                  <div style={{ display: "grid", gap: 10 }}>
+                  <div className="aca-orderSummaryCard__items">
                     {summaryItems.map((row) => {
                       const img = resolveImageUrl(
                         (row.product as any).imageUrl,
@@ -953,7 +1018,7 @@ export default function ShopPage() {
                   </div>
                 )}
 
-                <div style={{ marginTop: 14 }}>
+                <div className="aca-orderSummaryCard__footer">
                   <Button
                     type="primary"
                     block
@@ -969,6 +1034,33 @@ export default function ShopPage() {
         ) : null}
 
         <section className="aca-products">
+          {activeCategoryInfo ? (
+            <Card
+              className="aca-categoryInfoCard"
+              styles={{
+                body: {
+                  padding: isMobile ? 14 : 18,
+                },
+              }}
+            >
+              <div>
+                <Text className="aca-categoryInfoCard__eyebrow">
+                  About this category
+                </Text>
+
+                <Title level={3} style={{ marginTop: 4, marginBottom: 8 }}>
+                  {activeCategoryInfo.title}
+                </Title>
+              </div>
+
+              <div className="aca-categoryInfoCard__text">
+                {activeCategoryInfo.paragraphs.map((paragraph) => (
+                  <Text key={paragraph}>{paragraph}</Text>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
           <Row gutter={[16, 16]} align="stretch">
             {filtered.map((p) => {
               const stock = stockFor(p);
@@ -1320,7 +1412,13 @@ export default function ShopPage() {
             onClose={() => setCartOpen(false)}
             placement="bottom"
             height="75vh"
-            bodyStyle={{ paddingBottom: 90 }}
+            styles={{
+              body: {
+                maxHeight: "calc(75vh - 56px)",
+                overflowY: "auto",
+                paddingBottom: 90,
+              },
+            }}
           >
             {items.length === 0 ? (
               <Text type="secondary">No items yet.</Text>

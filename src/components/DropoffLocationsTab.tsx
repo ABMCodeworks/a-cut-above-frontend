@@ -57,7 +57,7 @@ type ScheduleFormValues = {
 function fmtDate(dt?: string | null) {
   if (!dt) return "—";
   const d = dayjs(dt);
-  return d.isValid() ? d.format("ddd, D MMM YYYY") : "—";
+  return d.isValid() ? d.format("ddd, D MMM YYYY, HH:mm") : "—";
 }
 
 // ─── Schedule List for a location ────────────────────────────────────────────
@@ -98,8 +98,8 @@ function ScheduleList({
     setSaving(true);
     try {
       await api.post(`/api/admin/dropoff-locations/${location.id}/schedules`, {
-        cutoffDate: values.cutoffDate.startOf("day").toISOString(),
-        deliveryDate: values.deliveryDate.startOf("day").toISOString(),
+        cutoffDate: values.cutoffDate.toISOString(),
+        deliveryDate: values.deliveryDate.toISOString(),
       });
       message.success("Schedule added");
       addForm.resetFields();
@@ -223,8 +223,10 @@ function ScheduleList({
                 style={{ marginBottom: 8 }}
               >
                 <DatePicker
+                  showTime={{ format: "HH:mm" }}
+                  format="ddd, D MMM YYYY, HH:mm"
                   style={{ width: "100%" }}
-                  placeholder="Select cut-off date"
+                  placeholder="Select cut-off date and time"
                   disabledDate={(c) => c && c.isBefore(dayjs().startOf("day"))}
                 />
               </Form.Item>
@@ -247,8 +249,10 @@ function ScheduleList({
                 style={{ marginBottom: 8 }}
               >
                 <DatePicker
+                  showTime={{ format: "HH:mm" }}
+                  format="ddd, D MMM YYYY, HH:mm"
                   style={{ width: "100%" }}
-                  placeholder="Select delivery date"
+                  placeholder="Select delivery date and time"
                   disabledDate={(c) => {
                     if (!c) return false;
                     if (c.isBefore(dayjs().startOf("day"))) return true;

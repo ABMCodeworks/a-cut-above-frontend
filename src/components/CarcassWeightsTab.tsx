@@ -10,6 +10,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -27,7 +28,13 @@ type ProductOption = {
   name: string;
   unit: string;
   stockQty?: number;
+  categoryId?: string | null;
   isFifthQuarter?: boolean;
+};
+
+type CategoryOption = {
+  id: string;
+  name: string;
 };
 
 type CarcassDryWeightRow = {
@@ -42,6 +49,7 @@ type CarcassDryWeightRow = {
     id: string;
     name: string;
     unit: string;
+    categoryId?: string | null;
     isFifthQuarter?: boolean;
   };
 };
@@ -49,8 +57,18 @@ type CarcassDryWeightRow = {
 type CarcassBatchRecord = {
   id: string;
   animalId: string;
+  meatCategoryId?: string | null;
+  slaughterSheetNumber?: number | null;
+  slaughterSheetYear?: number | null;
+  liveWeightDate?: string | null;
+  liveWeightKg?: number | string | null;
+  noHq?: number | null;
   weighedAt: string;
   notes?: string | null;
+  meatCategory?: {
+    id: string;
+    name: string;
+  } | null;
 
   hindquarterWeight1Kg: number | string;
   hindquarterWeight2Kg: number | string;
@@ -76,6 +94,10 @@ type FifthQuarterItemForm = {
 };
 
 type WetForm = {
+  meatCategoryId: string;
+  liveWeightDate: dayjs.Dayjs;
+  liveWeightKg: number;
+  noHq: number;
   animalId: string;
   weighedAt: dayjs.Dayjs;
   hindquarterWeight1Kg: number;
@@ -138,6 +160,7 @@ export default function CarcassWeightsTab({
   const [dryForm] = Form.useForm<DryForm>();
 
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
   const sortedRecords = useMemo(
@@ -150,10 +173,14 @@ export default function CarcassWeightsTab({
 
   const wetFormWatch = Form.useWatch([], wetForm);
   const dryItemsWatch = Form.useWatch("items", dryForm) || [];
+  const selectedWetCategoryId = Form.useWatch("meatCategoryId", wetForm);
 
   const fifthQuarterProducts = useMemo(
-    () => productOptions.filter((p) => p.isFifthQuarter),
-    [productOptions],
+    () =>
+      productOptions.filter(
+        (p) => p.isFifthQuarter && p.categoryId === selectedWetCategoryId,
+      ),
+    [productOptions, selectedWetCategoryId],
   );
 
   const nonFifthQuarterProducts = useMemo(
@@ -205,9 +232,16 @@ export default function CarcassWeightsTab({
   async function loadProductsForCreation() {
     setLoadingProducts(true);
     try {
-      const res = await api.get(`/api/admin/products`);
-      const products = (res.data?.products || []) as ProductOption[];
+      const [pRes, cRes] = await Promise.all([
+        api.get(`/api/admin/products`),
+        api.get(`/api/admin/categories`),
+      ]);
+
+      const products = (pRes.data?.products || []) as ProductOption[];
+      const categories = (cRes.data?.categories || []) as CategoryOption[];
+
       setProductOptions(products);
+      setCategoryOptions(categories);
       return products;
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Failed to load products");
@@ -217,9 +251,12 @@ export default function CarcassWeightsTab({
     }
   }
 
-  function buildFifthQuarterItems(products: ProductOption[]) {
+  function buildFifthQuarterItems(
+    products: ProductOption[],
+    categoryId: string | null | undefined,
+  ) {
     return products
-      .filter((p) => p.isFifthQuarter)
+      .filter((p) => p.isFifthQuarter && p.categoryId === categoryId)
       .map((p) => ({
         productId: p.id,
         totalWeightKg: 0,
@@ -233,8 +270,15 @@ export default function CarcassWeightsTab({
     wetForm.resetFields();
 
     const products = await loadProductsForCreation();
+    const defaultCategoryId =
+      categoryOptions[0]?.id ||
+      (await api.get(`/api/admin/categories`).then((res) => res.data?.categories?.[0]?.id).catch(() => ""));
 
     wetForm.setFieldsValue({
+      meatCategoryId: defaultCategoryId || "",
+      liveWeightDate: dayjs(),
+      liveWeightKg: 0,
+      noHq: 2,
       animalId: "",
       weighedAt: dayjs(),
       hindquarterWeight1Kg: 0,
@@ -242,7 +286,7 @@ export default function CarcassWeightsTab({
       forequarterWeight1Kg: 0,
       forequarterWeight2Kg: 0,
       notes: "",
-      fifthQuarterItems: buildFifthQuarterItems(products),
+      fifthQuarterItems: buildFifthQuarterItems(products, defaultCategoryId),
     });
 
     setWetModalOpen(true);
@@ -269,6 +313,14 @@ export default function CarcassWeightsTab({
     );
 
     wetForm.setFieldsValue({
+      meatCategoryId: record.meatCategoryId || "",
+      liveWeightDate: record.liveWeightDate
+        ? dayjs(record.liveWeightDate)
+        : record.weighedAt
+          ? dayjs(record.weighedAt)
+          : dayjs(),
+      liveWeightKg: n(record.liveWeightKg),
+      noHq: Number(record.noHq ?? 2),
       animalId: record.animalId,
       weighedAt: record.weighedAt ? dayjs(record.weighedAt) : dayjs(),
       hindquarterWeight1Kg: n(record.hindquarterWeight1Kg),
@@ -277,7 +329,7 @@ export default function CarcassWeightsTab({
       forequarterWeight2Kg: n(record.forequarterWeight2Kg),
       notes: record.notes || "",
       fifthQuarterItems: products
-        .filter((p) => p.isFifthQuarter)
+        .filter((p) => p.isFifthQuarter && p.categoryId === record.meatCategoryId)
         .map((p) => {
           const existing = existingFifthQuarterByProductId.get(String(p.id));
           return (
@@ -351,8 +403,18 @@ export default function CarcassWeightsTab({
     const values = await wetForm.validateFields();
 
     const payload = {
+      meatCategoryId: String(values.meatCategoryId || "").trim(),
+      liveWeightDate: values.liveWeightDate
+        ? values.liveWeightDate.toISOString()
+        : null,
+      liveWeightKg: n(values.liveWeightKg),
+      noHq: Math.trunc(n(values.noHq)),
       animalId: String(values.animalId || "").trim(),
-      weighedAt: values.weighedAt ? values.weighedAt.toISOString() : null,
+      weighedAt: values.liveWeightDate
+        ? values.liveWeightDate.toISOString()
+        : values.weighedAt
+          ? values.weighedAt.toISOString()
+          : null,
       hindquarterWeight1Kg: n(values.hindquarterWeight1Kg),
       hindquarterWeight2Kg: n(values.hindquarterWeight2Kg),
       forequarterWeight1Kg: n(values.forequarterWeight1Kg),
@@ -459,16 +521,39 @@ export default function CarcassWeightsTab({
 
   const columns = [
     {
-      title: "Tag Number",
-      dataIndex: "animalId",
-      key: "animalId",
-      render: (v: any) => <b>{v}</b>,
+      title: "Slaughter Sheet / Tag",
+      key: "sheetTag",
+      render: (_: any, row: CarcassBatchRecord) => (
+        <div style={{ display: "grid", gap: 2 }}>
+          <b>
+            {row.slaughterSheetNumber
+              ? `${row.slaughterSheetYear || dayjs(row.liveWeightDate || row.weighedAt).year()}-${String(row.slaughterSheetNumber).padStart(3, "0")}`
+              : "Auto"}
+          </b>
+          <Text type="secondary">Tag: {row.animalId}</Text>
+        </div>
+      ),
+    },
+    {
+      title: "Animal",
+      key: "animal",
+      width: 120,
+      render: (_: any, row: CarcassBatchRecord) =>
+        row.meatCategory?.name || <Text type="secondary">—</Text>,
     },
     {
       title: "Live Weight",
-      dataIndex: "totalWetWeightKg",
-      key: "totalWetWeightKg",
+      dataIndex: "liveWeightKg",
+      key: "liveWeightKg",
       width: 140,
+      render: (_: any, row: CarcassBatchRecord) =>
+        row.liveWeightKg != null ? fmtKg(row.liveWeightKg) : "—",
+    },
+    {
+      title: "Carcass Weight",
+      dataIndex: "totalCarcassWeightKg",
+      key: "totalCarcassWeightKg",
+      width: 150,
       render: (v: any) => fmtKg(v),
     },
     {
@@ -491,10 +576,12 @@ export default function CarcassWeightsTab({
     },
     {
       title: "Wet Date",
-      dataIndex: "weighedAt",
-      key: "weighedAt",
+      key: "liveWeightDate",
       width: 130,
-      render: (v: string) => (v ? dayjs(v).format("D MMM YYYY") : "—"),
+      render: (_: any, row: CarcassBatchRecord) =>
+        row.liveWeightDate || row.weighedAt
+          ? dayjs(row.liveWeightDate || row.weighedAt).format("D MMM YYYY")
+          : "—",
     },
     {
       title: "Notes",
@@ -594,7 +681,13 @@ export default function CarcassWeightsTab({
                   <Card size="small">
                     <Text type="secondary">Live Weight</Text>
                     <div style={{ fontWeight: 700, marginTop: 4 }}>
-                      {fmtKg(row.totalWetWeightKg)}
+                      {row.liveWeightKg != null ? fmtKg(row.liveWeightKg) : "—"}
+                    </div>
+                  </Card>
+                  <Card size="small">
+                    <Text type="secondary">No. HQ</Text>
+                    <div style={{ fontWeight: 700, marginTop: 4 }}>
+                      {Number(row.noHq ?? 2)}
                     </div>
                   </Card>
                 </div>
@@ -721,6 +814,40 @@ export default function CarcassWeightsTab({
       >
         <Form form={wetForm} layout="vertical">
           <Form.Item
+            name="meatCategoryId"
+            label="Animal"
+            rules={[{ required: true, message: "Animal type is required" }]}
+          >
+            <Select
+              placeholder="Select animal"
+              options={categoryOptions.map((c) => ({
+                value: c.id,
+                label: c.name,
+              }))}
+              disabled={!!editingWet}
+              onChange={(categoryId) => {
+                wetForm.setFieldsValue({
+                  fifthQuarterItems: buildFifthQuarterItems(
+                    productOptions,
+                    categoryId,
+                  ),
+                });
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item label="Slaughter Sheet Number">
+            <Input
+              disabled
+              value={
+                editingWet?.slaughterSheetNumber
+                  ? `${editingWet.slaughterSheetYear || dayjs(editingWet.liveWeightDate || editingWet.weighedAt).year()}-${String(editingWet.slaughterSheetNumber).padStart(3, "0")}`
+                  : "Auto-generated when saved"
+              }
+            />
+          </Form.Item>
+
+          <Form.Item
             name="animalId"
             label="Tag Number"
             rules={[{ required: true, message: "Tag number is required" }]}
@@ -729,11 +856,31 @@ export default function CarcassWeightsTab({
           </Form.Item>
 
           <Form.Item
-            name="weighedAt"
-            label="Wet / Live Weight Date"
+            name="liveWeightDate"
+            label="Live Weight Date"
             rules={[{ required: true, message: "Date is required" }]}
           >
             <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Form.Item
+            name="liveWeightKg"
+            label="Live Weight (kg)"
+            rules={[{ required: true, message: "Live weight is required" }]}
+          >
+            <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Form.Item
+            name="noHq"
+            label="No. HQ"
+            rules={[{ required: true, message: "No. HQ is required" }]}
+          >
+            <InputNumber min={0} step={1} style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Form.Item name="weighedAt" hidden>
+            <DatePicker />
           </Form.Item>
 
           <Divider orientation="left">Quarter Weights</Divider>

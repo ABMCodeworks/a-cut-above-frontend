@@ -10,7 +10,13 @@ export type Product = {
 
   // NEW:
   imageUrl?: string | null;
-  category?: string | null; // category key, e.g. "beef"
+  category?: {
+    id: string;
+    name: string;
+    description?: string | null;
+    key?: string;
+    iconKey: string;
+  } | null;
 };
 
 export type CartItem = {
