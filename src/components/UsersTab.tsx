@@ -99,6 +99,13 @@ const PERMISSION_GROUPS: {
       ],
     },
     {
+      title: "Site Content",
+      items: [
+        { label: "View site content", value: "content.view" },
+        { label: "Manage site content", value: "content.manage" },
+      ],
+    },
+    {
       title: "Everything",
       items: [{ label: "Full admin access", value: "admin.full" }],
     },

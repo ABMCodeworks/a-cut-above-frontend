@@ -5,12 +5,10 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Divider,
   Form,
   Input,
   InputNumber,
-  Modal,
   Space,
   Typography,
   Select,
@@ -34,6 +32,7 @@ import { useCart } from "../../context/CartContext";
 
 const { Title, Text } = Typography;
 const MUTARE_MINIMUM = 50;
+const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
 
 type WindowState = {
   open: boolean;
@@ -142,10 +141,6 @@ export default function CheckoutPage() {
   );
   const [stockChecking, setStockChecking] = useState(false);
 
-  const [ackOpen, setAckOpen] = useState(false);
-  const [ackChecked, setAckChecked] = useState(false);
-  const [pendingValues, setPendingValues] = useState<any | null>(null);
-
   const [phoneValue, setPhoneValue] = useState("+263");
 
   async function loadWindow() {
@@ -175,14 +170,21 @@ export default function CheckoutPage() {
       setDropoffs(parsed);
 
       const current = form.getFieldValue("dropoffLocationId");
-      const firstActive = parsed
+      const activeSorted = parsed
         .filter((d) => d.isActive)
         .sort(
           (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
-        )[0];
+        );
 
-      if (!current && firstActive) {
-        form.setFieldsValue({ dropoffLocationId: firstActive.id });
+      // Carry through the delivery location the customer picked on the shop page.
+      const saved = localStorage.getItem(PREFERRED_LOCATION_KEY);
+      const savedValid =
+        saved && activeSorted.some((d) => d.id === saved) ? saved : null;
+
+      const next = savedValid || activeSorted[0]?.id;
+
+      if (!current && next) {
+        form.setFieldsValue({ dropoffLocationId: next });
       }
     } catch (e: any) {
       console.error(e);
@@ -224,6 +226,8 @@ export default function CheckoutPage() {
       : null;
     return { has: Boolean(cutoff && nextDelivery), cutoff, nextDelivery };
   }, [selectedDropoff]);
+
+  const deliveryScheduleAvailable = Boolean(selectedDropoff && deliveryInfo.has);
 
   async function runStockCheck() {
     if (!items.length) {
@@ -300,7 +304,6 @@ export default function CheckoutPage() {
   async function doSubmit(values: any) {
     const customerName = String(values.customerName || "").trim();
     const customerPhone = normalizeIntlPhone(phoneValue);
-    const customerEmail = String(values.customerEmail || "").trim();
     const dropoffLocationId = String(values.dropoffLocationId || "").trim();
     const personalAddress = String(values.personalAddress || "").trim();
 
@@ -315,7 +318,7 @@ export default function CheckoutPage() {
       const payload = {
         customerName,
         customerPhone,
-        customerEmail,
+        customerEmail: "",
         dropoffLocationId,
         personalAddress: isMutare ? personalAddress : "",
         notes: "",
@@ -327,8 +330,6 @@ export default function CheckoutPage() {
       clear();
       form.resetFields();
       setPhoneValue("+263");
-      setAckChecked(false);
-      setPendingValues(null);
 
       navigate("/track", {
         replace: true,
@@ -349,6 +350,7 @@ export default function CheckoutPage() {
         setStockIssuesById(map);
         return;
       }
+      message.error(e?.response?.data?.error || "Order failed");
       console.error("Order failed:", e?.response?.data || e);
     } finally {
       setSubmitting(false);
@@ -381,17 +383,17 @@ export default function CheckoutPage() {
       return;
     }
 
-    setPendingValues(values);
-    setAckChecked(false);
-    setAckOpen(true);
-  }
-
-  async function handleAckOk() {
-    if (!ackChecked) return;
-    setAckOpen(false);
-    if (pendingValues) {
-      await doSubmit(pendingValues);
+    if (!deliveryScheduleAvailable) {
+      form.setFields([
+        {
+          name: "dropoffLocationId",
+          errors: ["Choose a delivery location with an upcoming schedule."],
+        },
+      ]);
+      return;
     }
+
+    await doSubmit(values);
   }
 
   return (
@@ -428,41 +430,31 @@ export default function CheckoutPage() {
       ) : null}
 
       {selectedDropoff ? (
-        <div style={{ marginTop: 14, marginBottom: 16 }}>
+        <div style={{ marginTop: 10, marginBottom: 12 }}>
           {deliveryInfo.has ? (
             <Alert
               type="info"
               showIcon
-              message="Next delivery schedule"
-              description={
-                <div style={{ display: "grid", gap: 4 }}>
-                  <div>
-                    Delivery location: <b>{selectedDropoff.name}</b>
-                  </div>
-                  <div>
-                    Order cut-off:{" "}
-                    <b>{deliveryInfo.cutoff!.toLocaleDateString()}</b>
-                  </div>
-                  <div>
-                    Delivery date:{" "}
-                    <b>{deliveryInfo.nextDelivery!.toLocaleDateString()}</b>
-                  </div>
-                  <div style={{ opacity: 0.8 }}>
-                    Orders placed after the cut-off will go on the next delivery
-                    run.
-                  </div>
-                </div>
+              className="aca-checkoutSchedule"
+              message={
+                <span>
+                  <b>{selectedDropoff.name}</b>
+                  <span> • Cut-off: </span>
+                  <b>{deliveryInfo.cutoff!.toLocaleDateString()}</b>
+                  <span> • Delivery: </span>
+                  <b>{deliveryInfo.nextDelivery!.toLocaleDateString()}</b>
+                </span>
               }
             />
           ) : (
             <Alert
               type="warning"
               showIcon
-              message="No upcoming delivery scheduled"
-              description={
+              className="aca-checkoutSchedule"
+              message={
                 selectedDropoff
-                  ? `No upcoming delivery is scheduled yet for ${selectedDropoff.name}. Please contact us if you need a delivery date.`
-                  : "Please contact us if you need a delivery date for this location."
+                  ? `No upcoming delivery scheduled for ${selectedDropoff.name}`
+                  : "No upcoming delivery scheduled"
               }
             />
           )}
@@ -571,25 +563,6 @@ export default function CheckoutPage() {
                 </Form.Item>
               </div>
 
-              <Form.Item
-                name="customerEmail"
-                label={
-                  <span style={{ letterSpacing: 1, fontWeight: 800 }}>
-                    EMAIL ADDRESS
-                  </span>
-                }
-                rules={[
-                  {
-                    required: true,
-                    message: "Please enter your email address",
-                  },
-                  { type: "email", message: "Please enter a valid email" },
-                ]}
-                normalize={(v) => String(v || "")}
-              >
-                <Input placeholder="name@example.com" />
-              </Form.Item>
-
               {isMutare ? (
                 <Alert
                   type={mutareMinimumMet ? "info" : "error"}
@@ -624,6 +597,9 @@ export default function CheckoutPage() {
                 <Select
                   loading={dropoffsLoading}
                   placeholder="Select a drop-off location"
+                  onChange={(v) => {
+                    if (v) localStorage.setItem(PREFERRED_LOCATION_KEY, v);
+                  }}
                   options={dropoffs
                     .filter((d) => d.isActive)
                     .sort(
@@ -690,7 +666,8 @@ export default function CheckoutPage() {
                     !windowState.open ||
                     items.length === 0 ||
                     hasBlockingIssues ||
-                    !mutareMinimumMet
+                    !mutareMinimumMet ||
+                    !deliveryScheduleAvailable
                   }
                   icon={<LockOutlined />}
                   className="aca-cartBtn"
@@ -720,6 +697,15 @@ export default function CheckoutPage() {
                 <div style={{ marginTop: 10 }}>
                   <Text strong style={{ color: "#d48806" }}>
                     Mutare orders must be at least ${MUTARE_MINIMUM.toFixed(2)}.
+                  </Text>
+                </div>
+              ) : null}
+
+              {!deliveryScheduleAvailable ? (
+                <div style={{ marginTop: 10 }}>
+                  <Text strong style={{ color: "#d48806" }}>
+                    This delivery location does not have an upcoming delivery
+                    scheduled yet.
                   </Text>
                 </div>
               ) : null}
@@ -755,9 +741,28 @@ export default function CheckoutPage() {
 
               <Divider style={{ margin: "12px 0" }} />
 
-              <div style={{ marginBottom: 12 }}>
-                <Text type="secondary">Subtotal</Text>
-                <div style={{ fontSize: 24, fontWeight: 800 }}>
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "14px 16px",
+                  borderRadius: 14,
+                  background: "var(--aca-forest)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 700 }}>
+                    CART TOTAL
+                  </span>
+                  <span style={{ fontSize: 13, opacity: 0.85 }}>
+                    {items.length} item{items.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1 }}>
                   ${cartSubtotal.toFixed(2)}
                 </div>
               </div>
@@ -883,7 +888,17 @@ export default function CheckoutPage() {
                                     type="secondary"
                                     style={{ fontSize: 12 }}
                                   >
-                                    {`$${lineTotal.toFixed(2)}`}
+                                    {`$${unitPrice.toFixed(2)} × ${qty}`}
+                                  </Text>
+
+                                  <Text
+                                    style={{
+                                      fontSize: 15,
+                                      fontWeight: 800,
+                                      color: "var(--aca-forest)",
+                                    }}
+                                  >
+                                    Item total: ${lineTotal.toFixed(2)}
                                   </Text>
 
                                   {isEstimated ? (
@@ -1022,67 +1037,6 @@ export default function CheckoutPage() {
         </aside>
       </div>
 
-      <Modal
-        open={ackOpen}
-        title="Acknowledgement required"
-        onCancel={() => {
-          setAckOpen(false);
-          setPendingValues(null);
-          setAckChecked(false);
-        }}
-        onOk={handleAckOk}
-        okText="Confirm and place order"
-        confirmLoading={submitting}
-        okButtonProps={{
-          disabled: !ackChecked,
-        }}
-      >
-        <div style={{ display: "grid", gap: 12 }}>
-          <Alert
-            type="warning"
-            showIcon
-            message="Please read before placing your order"
-            description={
-              <div style={{ display: "grid", gap: 6 }}>
-                <div>
-                  By placing this order, you confirm that your details and
-                  delivery information are correct.
-                </div>
-                <div>
-                  You also understand that stock is subject to availability at
-                  the time your order is processed.
-                </div>
-                {hasEstimatedPricing ? (
-                  <div>
-                    For weight-based items, the total shown is an estimate only.
-                    Your final price will be confirmed and sent to you once
-                    packing is completed.
-                  </div>
-                ) : null}
-                {isMutare ? (
-                  <div>
-                    Mutare orders require a minimum basket value of $
-                    {MUTARE_MINIMUM.toFixed(2)} and a valid personal address.
-                  </div>
-                ) : null}
-                {deliveryInfo.nextDelivery ? (
-                  <div>
-                    Your estimated delivery date is{" "}
-                    <b>{deliveryInfo.nextDelivery.toLocaleDateString()}</b>.
-                  </div>
-                ) : null}
-              </div>
-            }
-          />
-
-          <Checkbox
-            checked={ackChecked}
-            onChange={(e) => setAckChecked(e.target.checked)}
-          >
-            I acknowledge the above
-          </Checkbox>
-        </div>
-      </Modal>
     </div>
   );
 }

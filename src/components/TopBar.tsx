@@ -150,14 +150,20 @@ export default function TopBar() {
 
         {/* Right actions */}
         <div className="aca-header__right">
-          <Badge count={items.length} size="small">
+          <Badge
+            count={items.length}
+            size="default"
+            offset={[-4, 4]}
+            color="var(--aca-gold)"
+          >
             <Button
               type="primary"
+              size="middle"
               className="aca-cartBtn"
-              icon={<ShoppingCartOutlined />}
+              icon={<ShoppingCartOutlined style={{ fontSize: 18 }} />}
               onClick={() => navigate("/checkout")}
             >
-              {!isMobile ? "Cart" : null}
+              Cart{items.length ? ` (${items.length})` : ""}
             </Button>
           </Badge>
 

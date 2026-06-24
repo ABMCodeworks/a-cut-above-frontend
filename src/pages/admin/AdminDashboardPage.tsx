@@ -1,7 +1,7 @@
 // src/pages/admin/AdminDashboardPage.tsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Tabs, message } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 
 import AdminShell from "../../components/AdminShell";
@@ -14,6 +14,7 @@ import DashboardTab from "../../components/DashboardTab";
 import UsersTab from "../../components/UsersTab";
 import CarcassWeightsTab from "../../components/CarcassWeightsTab";
 import WasteManagementTab from "../../components/WasteManagementTab";
+import ContentTab from "../../components/ContentTab";
 
 export type AdminCategory = {
   id: string;
@@ -125,7 +126,9 @@ export type AdminPermission =
   | "users.view"
   | "users.manage"
   | "carcassweights.view"
-  | "carcassweights.manage";
+  | "carcassweights.manage"
+  | "content.view"
+  | "content.manage";
 
 export type CarcassWeightRecord = {
   id: string;
@@ -161,6 +164,7 @@ function toNumber(v: string | number | null | undefined) {
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -289,29 +293,46 @@ export default function AdminDashboardPage() {
   const canViewDropoffs = hasPermission(myPermissions, "dropoffs.view");
   const canViewWindows = hasPermission(myPermissions, "windows.view");
   const canViewUsers = hasPermission(myPermissions, "users.view");
+  const canViewContent = hasPermission(myPermissions, "content.view");
   const canViewCarcassWeights = hasPermission(
     myPermissions,
     "carcassweights.view",
   );
 
+  const defaultTabKey = canViewDashboard
+    ? "dashboard"
+    : canViewOrders
+      ? "orders"
+      : canViewProducts
+        ? "products"
+        : canViewWaste
+          ? "waste"
+          : canViewUsers
+            ? "users"
+            : canViewContent
+              ? "content"
+              : canViewCarcassWeights
+                ? "carcass-weights"
+                : "dashboard";
+
+  // Persist the selected tab in the URL so a refresh keeps the user on the
+  // same tab instead of resetting to the dashboard.
+  const activeTabKey = searchParams.get("tab") || defaultTabKey;
+
+  const handleTabChange = useCallback(
+    (key: string) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", key);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
   return (
     <AdminShell>
       <Tabs
-        defaultActiveKey={
-          canViewDashboard
-            ? "dashboard"
-            : canViewOrders
-              ? "orders"
-              : canViewProducts
-                ? "products"
-                : canViewWaste
-                  ? "waste"
-                  : canViewUsers
-                    ? "users"
-                    : canViewCarcassWeights
-                      ? "carcass-weights"
-                      : "dashboard"
-        }
+        activeKey={activeTabKey}
+        onChange={handleTabChange}
         items={[
           ...(canViewDashboard
             ? [
@@ -422,6 +443,20 @@ export default function AdminDashboardPage() {
                     users={users}
                     currentPermissions={myPermissions}
                     onReload={loadAll}
+                  />
+                ),
+              },
+            ]
+            : []),
+
+          ...(canViewContent
+            ? [
+              {
+                key: "content",
+                label: "Site Content",
+                children: (
+                  <ContentTab
+                    permissions={myPermissions}
                   />
                 ),
               },

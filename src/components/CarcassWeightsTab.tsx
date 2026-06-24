@@ -64,6 +64,8 @@ type CarcassBatchRecord = {
   liveWeightKg?: number | string | null;
   noHq?: number | null;
   weighedAt: string;
+  hindquarterDryDate?: string | null;
+  forequarterDryDate?: string | null;
   notes?: string | null;
   meatCategory?: {
     id: string;
@@ -118,6 +120,8 @@ type DryItemForm = {
 type DryForm = {
   animalId: string;
   weighedAt: dayjs.Dayjs;
+  hindquarterDryDate?: dayjs.Dayjs | null;
+  forequarterDryDate?: dayjs.Dayjs | null;
   items: DryItemForm[];
 };
 
@@ -128,6 +132,19 @@ function n(v: any): number {
 
 function fmtKg(v: any) {
   return `${n(v).toFixed(2)} kg`;
+}
+
+// Percentage lost between the carcass weight and the (non-5th-quarter) dry
+// weight. Returns null when it cannot be computed (no carcass / no dry weight).
+function lossPct(carcassKg: any, dryKg: any): number | null {
+  const carcass = n(carcassKg);
+  const dry = n(dryKg);
+  if (carcass <= 0 || dry <= 0) return null;
+  return ((carcass - dry) / carcass) * 100;
+}
+
+function fmtLossPct(value: number | null): string {
+  return value === null ? "—" : `${value.toFixed(1)}%`;
 }
 
 function hasPermission(
@@ -162,6 +179,7 @@ export default function CarcassWeightsTab({
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [drySearch, setDrySearch] = useState("");
 
   const sortedRecords = useMemo(
     () =>
@@ -228,6 +246,11 @@ export default function CarcassWeightsTab({
       0,
     );
   }, [dryItemsWatch]);
+
+  const dryLossPreview = useMemo(
+    () => lossPct(dryTarget?.totalCarcassWeightKg, dryOnlyTotalPreview),
+    [dryTarget, dryOnlyTotalPreview],
+  );
 
   async function loadProductsForCreation() {
     setLoadingProducts(true);
@@ -349,6 +372,7 @@ export default function CarcassWeightsTab({
   async function openAddDryWeights(record: CarcassBatchRecord) {
     setDryTarget(record);
     setLoadingProducts(true);
+    setDrySearch("");
     dryForm.resetFields();
 
     try {
@@ -376,6 +400,12 @@ export default function CarcassWeightsTab({
       dryForm.setFieldsValue({
         animalId: record.animalId,
         weighedAt: dayjs(),
+        hindquarterDryDate: record.hindquarterDryDate
+          ? dayjs(record.hindquarterDryDate)
+          : null,
+        forequarterDryDate: record.forequarterDryDate
+          ? dayjs(record.forequarterDryDate)
+          : null,
         items: products
           .filter((p) => !p.isFifthQuarter)
           .map((p) => {
@@ -481,6 +511,12 @@ export default function CarcassWeightsTab({
       await api.post(`/api/admin/carcass-weights/dry`, {
         animalId: dryTarget.animalId,
         weighedAt: values.weighedAt ? values.weighedAt.toISOString() : null,
+        hindquarterDryDate: values.hindquarterDryDate
+          ? values.hindquarterDryDate.toISOString()
+          : null,
+        forequarterDryDate: values.forequarterDryDate
+          ? values.forequarterDryDate.toISOString()
+          : null,
         items,
       });
 
@@ -572,6 +608,21 @@ export default function CarcassWeightsTab({
       render: (_: any, row: CarcassBatchRecord) => {
         const total = getDryWeightTotal(row);
         return total > 0 ? fmtKg(total) : <Tag color="gold">Pending</Tag>;
+      },
+    },
+    {
+      title: "% Loss",
+      key: "loss",
+      width: 100,
+      render: (_: any, row: CarcassBatchRecord) => {
+        const loss = lossPct(row.totalCarcassWeightKg, getDryWeightTotal(row));
+        return loss === null ? (
+          <Text type="secondary">—</Text>
+        ) : (
+          <Tag color={loss >= 50 ? "red" : loss >= 35 ? "orange" : "green"}>
+            {fmtLossPct(loss)}
+          </Tag>
+        );
       },
     },
     {
@@ -688,6 +739,41 @@ export default function CarcassWeightsTab({
                     <Text type="secondary">No. HQ</Text>
                     <div style={{ fontWeight: 700, marginTop: 4 }}>
                       {Number(row.noHq ?? 2)}
+                    </div>
+                  </Card>
+                  <Card size="small">
+                    <Text type="secondary">Dry Weight</Text>
+                    <div style={{ fontWeight: 700, marginTop: 4 }}>
+                      {getDryWeightTotal(row) > 0
+                        ? fmtKg(getDryWeightTotal(row))
+                        : "—"}
+                    </div>
+                  </Card>
+                  <Card size="small">
+                    <Text type="secondary">% Loss (carcass → dry)</Text>
+                    <div style={{ fontWeight: 700, marginTop: 4 }}>
+                      {fmtLossPct(
+                        lossPct(
+                          row.totalCarcassWeightKg,
+                          getDryWeightTotal(row),
+                        ),
+                      )}
+                    </div>
+                  </Card>
+                  <Card size="small">
+                    <Text type="secondary">Hindquarter Date</Text>
+                    <div style={{ fontWeight: 700, marginTop: 4 }}>
+                      {row.hindquarterDryDate
+                        ? dayjs(row.hindquarterDryDate).format("D MMM YYYY")
+                        : "—"}
+                    </div>
+                  </Card>
+                  <Card size="small">
+                    <Text type="secondary">Forequarter Date</Text>
+                    <div style={{ fontWeight: 700, marginTop: 4 }}>
+                      {row.forequarterDryDate
+                        ? dayjs(row.forequarterDryDate).format("D MMM YYYY")
+                        : "—"}
                     </div>
                   </Card>
                 </div>
@@ -1080,7 +1166,31 @@ export default function CarcassWeightsTab({
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
 
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 12,
+            }}
+          >
+            <Form.Item name="hindquarterDryDate" label="Hindquarter Date">
+              <DatePicker style={{ width: "100%" }} allowClear />
+            </Form.Item>
+
+            <Form.Item name="forequarterDryDate" label="Forequarter Date">
+              <DatePicker style={{ width: "100%" }} allowClear />
+            </Form.Item>
+          </div>
+
           <Divider orientation="left">Dry Weight Products</Divider>
+
+          <Input
+            allowClear
+            value={drySearch}
+            onChange={(e) => setDrySearch(e.target.value)}
+            placeholder="Search products by name..."
+            style={{ marginBottom: 12 }}
+          />
 
           <Form.List name="items">
             {(fields) => (
@@ -1088,7 +1198,10 @@ export default function CarcassWeightsTab({
                 {fields.length === 0 ? (
                   <Text type="secondary">No dry-weight products found.</Text>
                 ) : (
-                  fields.map((field) => {
+                  (() => {
+                    const query = drySearch.trim().toLowerCase();
+
+                    const rows = fields.map((field) => {
                     const productId = dryForm.getFieldValue([
                       "items",
                       field.name,
@@ -1098,8 +1211,18 @@ export default function CarcassWeightsTab({
                       (p) => String(p.id) === String(productId),
                     );
 
+                    const matchesSearch =
+                      !query ||
+                      String(product?.name || "")
+                        .toLowerCase()
+                        .includes(query);
+
                     return (
-                      <Card key={field.key} size="small">
+                      <Card
+                        key={field.key}
+                        size="small"
+                        style={{ display: matchesSearch ? undefined : "none" }}
+                      >
                         <div
                           style={{
                             display: "grid",
@@ -1172,7 +1295,25 @@ export default function CarcassWeightsTab({
                         </div>
                       </Card>
                     );
-                  })
+                    });
+
+                    const anyVisible =
+                      !query ||
+                      rows.some(
+                        (row: any) => row.props.style?.display !== "none",
+                      );
+
+                    return (
+                      <>
+                        {rows}
+                        {!anyVisible ? (
+                          <Text type="secondary">
+                            No products match “{drySearch}”.
+                          </Text>
+                        ) : null}
+                      </>
+                    );
+                  })()
                 )}
               </div>
             )}
@@ -1183,6 +1324,14 @@ export default function CarcassWeightsTab({
               <Text>
                 <strong>Dry Weight Total:</strong>{" "}
                 {dryOnlyTotalPreview.toFixed(2)} kg
+              </Text>
+              <Text>
+                <strong>Carcass Weight:</strong>{" "}
+                {fmtKg(dryTarget?.totalCarcassWeightKg)}
+              </Text>
+              <Text>
+                <strong>Loss (carcass → dry):</strong>{" "}
+                {fmtLossPct(dryLossPreview)}
               </Text>
               <Text>
                 <strong>Total Packets Added To Stock:</strong>{" "}

@@ -18,7 +18,7 @@ import {
   message,
 } from "antd";
 import type { UploadProps } from "antd";
-import { UploadOutlined, MoreOutlined } from "@ant-design/icons";
+import { UploadOutlined, MoreOutlined, SearchOutlined } from "@ant-design/icons";
 import { api, RAILWAY_BASE } from "../api/client";
 import type {
   AdminCategory,
@@ -110,6 +110,7 @@ export default function ProductsTab({
 
   const [groupByCategory, setGroupByCategory] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [search, setSearch] = useState("");
   const [pendingImageFile, setPendingImageFile] = useState(null as File | null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState(
     null as string | null,
@@ -135,10 +136,19 @@ export default function ProductsTab({
     [categories],
   );
 
-  const visibleProducts = useMemo(
-    () => products.filter((p) => (showArchived ? !p.isActive : p.isActive)),
-    [products, showArchived],
-  );
+  const visibleProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return products.filter((p) => {
+      if (showArchived ? p.isActive : !p.isActive) return false;
+      if (!query) return true;
+      return (
+        p.name.toLowerCase().includes(query) ||
+        (p.description || "").toLowerCase().includes(query) ||
+        ((p as any).cutType || "").toLowerCase().includes(query) ||
+        (p.category?.name || "").toLowerCase().includes(query)
+      );
+    });
+  }, [products, showArchived, search]);
 
   const archivedCount = useMemo(
     () => products.filter((p) => !p.isActive).length,
@@ -688,6 +698,14 @@ export default function ProductsTab({
     <Card
       extra={
         <Space wrap>
+          <Input
+            allowClear
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            prefix={<SearchOutlined style={{ color: "rgba(0,0,0,0.35)" }} />}
+            placeholder="Search products..."
+            style={{ width: 220 }}
+          />
           <Space>
             <Text type="secondary">Group by category</Text>
             <Switch checked={groupByCategory} onChange={setGroupByCategory} />

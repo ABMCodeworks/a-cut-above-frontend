@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -26,6 +26,16 @@ const { Title, Text } = Typography;
 type TrackForm = {
   orderNo: string;
   contact: string;
+};
+
+type CheckoutAcknowledgement = {
+  title: string;
+  text: string;
+};
+
+const DEFAULT_CHECKOUT_ACKNOWLEDGEMENT: CheckoutAcknowledgement = {
+  title: "Acknowledgement",
+  text: "Thank you for your order. We will confirm your final total once your order has been packed.",
 };
 
 function normalizeStatus(status: any) {
@@ -72,6 +82,9 @@ function formatDate(value: any) {
 export default function TrackOrderPage() {
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState(null as TrackedOrder | null);
+  const [checkoutAcknowledgement, setCheckoutAcknowledgement] = useState(
+    DEFAULT_CHECKOUT_ACKNOWLEDGEMENT,
+  );
   const [form] = Form.useForm();
   const location = useLocation();
 
@@ -80,6 +93,36 @@ export default function TrackOrderPage() {
   const successDeliveryDate = locationState?.successDeliveryDate as
     | string
     | undefined;
+
+  useEffect(() => {
+    if (!successOrderNo) return;
+
+    let alive = true;
+
+    api
+      .get("/api/public/site-content/about")
+      .then((res) => {
+        if (!alive) return;
+        const content = res.data?.content;
+        setCheckoutAcknowledgement({
+          title:
+            String(content?.acknowledgementTitle || "").trim() ||
+            DEFAULT_CHECKOUT_ACKNOWLEDGEMENT.title,
+          text:
+            String(content?.acknowledgementText || "").trim() ||
+            DEFAULT_CHECKOUT_ACKNOWLEDGEMENT.text,
+        });
+      })
+      .catch(() => {
+        if (alive) {
+          setCheckoutAcknowledgement(DEFAULT_CHECKOUT_ACKNOWLEDGEMENT);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [successOrderNo]);
 
   async function track(values: TrackForm) {
     setLoading(true);
@@ -117,8 +160,7 @@ export default function TrackOrderPage() {
             Track Your Order
           </Title>
           <Text className="aca-tracking__subtitle">
-            Enter your order number and either your phone number or email
-            address.
+            Enter your order number and the phone number used to place the order.
           </Text>
         </div>
       </div>
@@ -145,6 +187,18 @@ export default function TrackOrderPage() {
                   Estimated delivery date: <b>{successDeliveryDateLabel}</b>
                 </Text>
               ) : null}
+              <div
+                style={{
+                  display: "grid",
+                  gap: 2,
+                  marginTop: 4,
+                  paddingTop: 8,
+                  borderTop: "1px solid rgba(35, 120, 4, 0.18)",
+                }}
+              >
+                <Text strong>{checkoutAcknowledgement.title}</Text>
+                <Text>{checkoutAcknowledgement.text}</Text>
+              </div>
             </div>
           }
         />
@@ -163,21 +217,19 @@ export default function TrackOrderPage() {
           <Form.Item
             name="contact"
             rules={[
-              { required: true, message: "Enter your phone or email" },
+              { required: true, message: "Enter your phone number" },
               {
                 validator: (_, value) => {
                   const v = String(value || "").trim();
                   if (v.length < 5) {
-                    return Promise.reject(
-                      "Please enter a valid phone or email",
-                    );
+                    return Promise.reject("Please enter a valid phone number");
                   }
                   return Promise.resolve();
                 },
               },
             ]}
           >
-            <Input placeholder="Phone or email" style={{ width: 240 }} />
+            <Input placeholder="Phone number" style={{ width: 240 }} />
           </Form.Item>
 
           <Button type="primary" htmlType="submit" loading={loading}>

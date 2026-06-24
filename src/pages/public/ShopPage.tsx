@@ -15,6 +15,7 @@ import {
   Modal,
   Row,
   Select,
+  Spin,
   Tag,
   Typography,
   message,
@@ -38,8 +39,8 @@ const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
 
 const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
-const HEADER_STICKY_OFFSET = 95;
-const SEARCH_STICKY_HEIGHT = 82;
+const HEADER_STICKY_OFFSET = 92;
+const SEARCH_STICKY_HEIGHT = 76;
 const SIDEBAR_STICKY_TOP = HEADER_STICKY_OFFSET + SEARCH_STICKY_HEIGHT + 12;
 
 type WindowState = {
@@ -476,6 +477,16 @@ export default function ShopPage() {
 
   const summaryItems = useMemo(() => items.slice(0, 10), [items]);
 
+  const cartTotal = useMemo(
+    () =>
+      items.reduce(
+        (sum, row) =>
+          sum + summaryUnitPrice(row.product as any) * Number(row.qty || 1),
+        0,
+      ),
+    [items],
+  );
+
   const deliveryBannerText = useMemo(
     () => deriveDeliveryBannerText(selectedLocation, windowState),
     [selectedLocation, windowState],
@@ -616,6 +627,7 @@ export default function ShopPage() {
               value={selectedLocationId ?? undefined}
               onChange={savePreferredLocation}
               placeholder="Select delivery location"
+              loading={loading}
               style={{ width: "100%" }}
               options={dropoffLocations.map((loc) => ({
                 value: loc.id,
@@ -805,8 +817,16 @@ export default function ShopPage() {
                     Order Summary
                   </h3>
 
-                  <Tag color={items.length ? "green" : "default"}>
-                    {items.length} item(s)
+                  <Tag
+                    color={items.length ? "green" : "default"}
+                    style={{
+                      marginInlineEnd: 0,
+                      fontSize: 15,
+                      fontWeight: 900,
+                      padding: "4px 10px",
+                    }}
+                  >
+                    {money(cartTotal)}
                   </Tag>
                 </div>
 
@@ -915,6 +935,19 @@ export default function ShopPage() {
                                     }}
                                   >
                                     {money(unitPrice)}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize: 13,
+                                    marginTop: 2,
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  Total:{" "}
+                                  <span style={{ color: "var(--aca-forest)" }}>
+                                    {money(unitPrice * qty)}
                                   </span>
                                 </div>
                               </div>
@@ -1061,8 +1094,17 @@ export default function ShopPage() {
             </Card>
           ) : null}
 
-          <Row gutter={[16, 16]} align="stretch">
-            {filtered.map((p) => {
+          {loading && products.length === 0 ? (
+            <div className="aca-shopLoading">
+              <Spin size="large" />
+              <Text strong>Loading products...</Text>
+              <Text type="secondary">
+                We are getting the latest cuts, stock and delivery dates.
+              </Text>
+            </div>
+          ) : (
+            <Row gutter={[16, 16]} align="stretch">
+              {filtered.map((p) => {
               const stock = stockFor(p);
               const soldOut = isSoldOut(p);
               const remaining = remainingStock(p);
@@ -1317,8 +1359,9 @@ export default function ShopPage() {
                   </Card>
                 </Col>
               );
-            })}
-          </Row>
+              })}
+            </Row>
+          )}
         </section>
       </div>
 
@@ -1524,6 +1567,19 @@ export default function ShopPage() {
                                 {money(unitPrice)}
                               </span>
                             </div>
+
+                            <div
+                              style={{
+                                fontSize: 13,
+                                marginTop: 2,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Total:{" "}
+                              <span style={{ color: "var(--aca-forest)" }}>
+                                {money(unitPrice * qty)}
+                              </span>
+                            </div>
                           </div>
 
                           <Button
@@ -1596,6 +1652,28 @@ export default function ShopPage() {
                 backdropFilter: "blur(8px)",
               }}
             >
+              {items.length > 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Text strong style={{ fontSize: 16 }}>
+                    Cart total
+                  </Text>
+                  <Text
+                    strong
+                    style={{ fontSize: 20, color: "var(--aca-forest)" }}
+                  >
+                    {money(cartTotal)}
+                  </Text>
+                </div>
+              ) : null}
+
               <Button
                 type="primary"
                 block

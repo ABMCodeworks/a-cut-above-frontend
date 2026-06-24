@@ -52,12 +52,13 @@ body {
 .aca-header {
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 80;
   height: auto;
-  padding: 10px 14px;
+  padding: 7px 14px 5px;
+  line-height: normal;
   border-bottom: 1px solid var(--aca-border);
   backdrop-filter: blur(10px);
-  background: color-mix(in srgb, var(--aca-bg) 86%, transparent);
+  background: var(--aca-bg);
 }
 
 .aca-header__inner {
@@ -66,12 +67,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
+  min-height: 54px;
 }
 
 .aca-brand {
   display: flex;
-  gap: 12px;
+  gap: 9px;
   align-items: center;
   cursor: pointer;
   user-select: none;
@@ -109,7 +111,7 @@ body {
 
 .aca-header__right {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   justify-content: flex-end;
 }
@@ -127,9 +129,9 @@ body {
 }
 
 .aca-brand__logo {
-  width: 68px;
-  height: 68px;
-  border-radius: 14px;
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
   object-fit: cover;
   display: block;
 }
@@ -138,17 +140,17 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  height: 52px;
+  height: 46px;
   line-height: 1;
-  gap: 4px;
+  gap: 2px;
 }
 
 .aca-brand__title {
   font-family: "Playfair Display", serif;
   letter-spacing: 0.08em;
   font-weight: 700;
-  font-size: 18px;
-  line-height: 20px;
+  font-size: 16px;
+  line-height: 18px;
   margin: 0;
   color: var(--aca-forest);
 }
@@ -168,17 +170,34 @@ body {
 
 .aca-cartBtn {
   border-radius: 999px !important;
-  box-shadow: 0 10px 22px rgba(39, 79, 44, 0.18);
+  font-weight: 800 !important;
+  letter-spacing: 0.02em;
+  min-height: 34px;
+  box-shadow: 0 8px 18px rgba(39, 79, 44, 0.22);
+  border: 1px solid var(--aca-gold) !important;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.aca-cartBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(39, 79, 44, 0.28);
 }
 
 .aca-nav {
   max-width: 1280px;
-  margin: 8px auto 0;
+  margin: 3px auto 0;
 }
 
 .aca-nav .ant-menu {
   background: transparent !important;
   border-bottom: none !important;
+  line-height: 30px !important;
+}
+
+.aca-nav .ant-menu-item {
+  padding-inline: 12px !important;
 }
 
 /* Modals */
@@ -298,6 +317,11 @@ body {
   height: 100%;
 }
 
+.aca-aboutStories {
+  display: grid;
+  gap: 18px;
+}
+
 .aca-aboutStory .ant-typography {
   line-height: 1.8;
 }
@@ -306,7 +330,6 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 20px;
 }
 
 .aca-aboutStory__image {
@@ -625,12 +648,34 @@ body {
   border-radius: 12px !important;
 }
 
+.aca-shopLoading {
+  min-height: 340px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 36px 18px;
+  border: 1px solid var(--aca-border);
+  border-radius: 18px;
+  background: var(--aca-card);
+  text-align: center;
+}
+
 /* Checkout layout */
 .aca-checkoutGrid {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;
   gap: 18px;
   margin-top: 18px;
+}
+
+.aca-checkoutSchedule {
+  padding: 8px 12px !important;
+}
+
+.aca-checkoutSchedule .ant-alert-message {
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 @media (max-width: 992px) {
