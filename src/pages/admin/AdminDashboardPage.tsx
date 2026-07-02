@@ -92,6 +92,9 @@ export type AdminOrder = {
   total: number;
   createdAt: string;
   updatedAt: string;
+  dropoffLocationId?: string | null;
+  windowId?: string | null;
+  deliveryScheduleId?: string | null;
   items: AdminOrderItem[];
   dropoffLocation?: any;
   deliverySchedule?: any;
@@ -104,6 +107,7 @@ export type AdminWindow = {
   startsAt: string;
   endsAt: string;
   isActive: boolean;
+  isPermanent: boolean;
 };
 
 export type AdminPermission =
@@ -362,6 +366,7 @@ export default function AdminDashboardPage() {
                   <OrdersTab
                     loading={loading}
                     orders={orders}
+                    windows={windows}
                     onReload={loadAll}
                     permissions={myPermissions}
                   />

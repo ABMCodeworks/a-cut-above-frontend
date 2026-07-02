@@ -38,6 +38,8 @@ import { api, API_BASE } from "../api/client";
 import type {
   AdminOrder,
   AdminOrderItem,
+  AdminPermission,
+  AdminWindow,
 } from "../pages/admin/AdminDashboardPage";
 
 const { Text, Title } = Typography;
@@ -123,12 +125,31 @@ function orderAddress(order: AdminOrder) {
   return address;
 }
 
+function packedPacketCount(it: AdminOrderItem) {
+  const packWeights = Array.isArray((it as any).packWeights)
+    ? (it as any).packWeights
+    : [];
+
+  const packedCount = packWeights.filter((w: any) => {
+    const value = Number(w?.value || 0);
+    return Number.isFinite(value) && value > 0;
+  }).length;
+
+  if (packedCount > 0) return packedCount;
+
+  const orderedQty = Number((it as any).qty || 0);
+  return Number.isFinite(orderedQty) ? orderedQty : 0;
+}
+
 function itemAmountForList(it: AdminOrderItem) {
   if (isKgItem(it)) {
     const weight = Number((it as any).weightKg || 0);
+    const packets = packedPacketCount(it);
+    const packetLabel = `${packets} packet${packets === 1 ? "" : "s"}`;
+
     return Number.isFinite(weight) && weight > 0
-      ? `${weight.toFixed(3)} kg`
-      : `${Number((it as any).qty || 0)} pack(s)`;
+      ? `${packetLabel} / ${weight.toFixed(3)} kg`
+      : packetLabel;
   }
 
   return Number((it as any).qty || 0);
@@ -328,6 +349,7 @@ function OrderTable({
   onExpandedRowKeysChange,
   onStatusUpdate,
   onDelete,
+  onDownloadDeliveryNote,
   selectedRowKeys,
   onSelectedRowKeysChange,
   onOpenPacking,
@@ -339,6 +361,7 @@ function OrderTable({
   onExpandedRowKeysChange: (keys: React.Key[]) => void;
   onStatusUpdate: (orderId: string, status: string) => Promise<void>;
   onDelete: (orderId: string, orderNo: string) => Promise<void>;
+  onDownloadDeliveryNote: (order: AdminOrder) => void;
   selectedRowKeys: React.Key[];
   onSelectedRowKeysChange: (keys: React.Key[]) => void;
   onOpenPacking: (order: AdminOrder) => void;
@@ -519,23 +542,38 @@ function OrderTable({
         {
           title: "",
           key: "actions",
-          width: isMobile ? 80 : 100,
+          width: isMobile ? 180 : 220,
           render: (_: any, row: AdminOrder) => (
-            <Popconfirm
-              title="Delete this order?"
-              description="This permanently removes the order and cannot be undone."
-              onConfirm={() => onDelete(row.id, row.orderNo)}
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-            >
-              <Button danger size="small">
-                Delete
+            <Space>
+              <Button
+                size="small"
+                icon={<FilePdfOutlined />}
+                onClick={() => onDownloadDeliveryNote(row)}
+              >
+                Delivery Note
               </Button>
-            </Popconfirm>
+              <Popconfirm
+                title="Delete this order?"
+                description="This permanently removes the order and cannot be undone."
+                onConfirm={() => onDelete(row.id, row.orderNo)}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger size="small">
+                  Delete
+                </Button>
+              </Popconfirm>
+            </Space>
           ),
         },
       ] as any[],
-    [isMobile, onDelete, onOpenPacking, onStatusUpdate],
+    [
+      isMobile,
+      onDelete,
+      onDownloadDeliveryNote,
+      onOpenPacking,
+      onStatusUpdate,
+    ],
   );
 
   const rowSelection = {
@@ -583,7 +621,7 @@ function OrderTable({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "auto auto",
+                  gridTemplateColumns: isMobile ? "1fr" : "auto auto auto",
                   gap: 8,
                   marginBottom: 12,
                 }}
@@ -613,6 +651,19 @@ function OrderTable({
                 >
                   Invoice PDF
                 </Button>
+
+                <Button
+                  block={isMobile}
+                  icon={<FilePdfOutlined />}
+                  onClick={() =>
+                    window.open(
+                      `${API_BASE}/api/admin/orders/${order.id}/delivery-note.pdf`,
+                      "_blank",
+                    )
+                  }
+                >
+                  Delivery Note PDF
+                </Button>
               </div>
 
               <Table
@@ -634,11 +685,15 @@ function OrderTable({
 export default function OrdersTab({
   loading,
   orders,
+  windows = [],
   onReload,
+  permissions: _permissions,
 }: {
   loading: boolean;
   orders: AdminOrder[];
+  windows?: AdminWindow[];
   onReload: () => void;
+  permissions?: AdminPermission[];
 }) {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
@@ -661,6 +716,7 @@ export default function OrdersTab({
   const [packingScheduleId, setPackingScheduleId] = useState("");
 
   const [deliveryRunOpen, setDeliveryRunOpen] = useState(false);
+  const [deliveryRunWindowId, setDeliveryRunWindowId] = useState("");
   const [deliveryRunScheduleId, setDeliveryRunScheduleId] = useState("");
   const [deliveryRunLocationId, setDeliveryRunLocationId] = useState("");
 
@@ -782,6 +838,35 @@ export default function OrdersTab({
     [adminProducts],
   );
 
+  const currentWindowId = useMemo(() => {
+    const now = Date.now();
+
+    const current = windows.find((w) => {
+      if (!w.isActive) return false;
+      if (w.isPermanent) return true;
+
+      const startsAt = new Date(w.startsAt).getTime();
+      const endsAt = new Date(w.endsAt).getTime();
+
+      return (
+        Number.isFinite(startsAt) &&
+        Number.isFinite(endsAt) &&
+        startsAt <= now &&
+        endsAt >= now
+      );
+    });
+
+    return current?.id || windows.find((w) => w.isActive)?.id || "";
+  }, [windows]);
+
+  useEffect(() => {
+    if (!deliveryRunWindowId && currentWindowId) {
+      setDeliveryRunWindowId(currentWindowId);
+    }
+  }, [currentWindowId, deliveryRunWindowId]);
+
+  const selectedDeliveryRunWindowId = deliveryRunWindowId || currentWindowId;
+
   const grouped = useMemo((): LocationGroup[] => {
     const filteredOrders = displayOrders.filter((o) => {
       const anyO = o as any;
@@ -846,6 +931,36 @@ export default function OrdersTab({
     );
   }, [displayOrders, schedules, filterLocationId, filterScheduleId, orderView]);
 
+  const visibleOrderSummary = useMemo(() => {
+    const visibleOrders = grouped.flatMap((locGroup) => [
+      ...locGroup.unscheduled,
+      ...Array.from(locGroup.schedules.values()).flatMap((g) => g.orders),
+    ]);
+
+    const total = visibleOrders.reduce(
+      (sum, order) => sum + Number((order as any).total || 0),
+      0,
+    );
+
+    return {
+      count: visibleOrders.length,
+      total,
+      average: visibleOrders.length ? total / visibleOrders.length : 0,
+    };
+  }, [grouped]);
+
+  const allOrderSummary = useMemo(() => {
+    const total = displayOrders.reduce(
+      (sum, order) => sum + Number((order as any).total || 0),
+      0,
+    );
+
+    return {
+      count: displayOrders.length,
+      total,
+    };
+  }, [displayOrders]);
+
   async function handleDelete(orderId: string, orderNo: string) {
     try {
       await api.delete(`/api/admin/orders/${orderId}`);
@@ -868,6 +983,13 @@ export default function OrdersTab({
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Failed to delete order");
     }
+  }
+
+  function downloadDeliveryNote(order: AdminOrder) {
+    window.open(
+      `${API_BASE}/api/admin/orders/${order.id}/delivery-note.pdf`,
+      "_blank",
+    );
   }
 
   async function handleStatusUpdate(orderId: string, status: string) {
@@ -1235,7 +1357,10 @@ export default function OrdersTab({
 
     const headers = ["Customer", "Phone", "Order No", ...productNames];
     const rows: any[][] = [];
-    const totals: Record<string, number> = {};
+    const totals: Record<
+      string,
+      { amount: number; packets: number; isKg: boolean }
+    > = {};
 
     for (const p of productNames) {
       totals[p] = 0;
@@ -1305,6 +1430,12 @@ export default function OrdersTab({
 
   function exportDeliveryList() {
     const ordersToExport = displayOrders.filter((o) => {
+      if (selectedDeliveryRunWindowId) {
+        if (String((o as any).windowId || "") !== selectedDeliveryRunWindowId) {
+          return false;
+        }
+      }
+
       if (deliveryRunLocationId) {
         if (String((o as any).dropoffLocationId || "") !== deliveryRunLocationId) {
           return false;
@@ -1358,7 +1489,7 @@ export default function OrdersTab({
     let grandTotal = 0;
 
     for (const productName of productNames) {
-      totals[productName] = 0;
+      totals[productName] = { amount: 0, packets: 0, isKg: false };
     }
 
     for (const order of ordersToExport) {
@@ -1371,11 +1502,16 @@ export default function OrdersTab({
         const amount = itemAmountForList(item);
         qtyByProduct[name] = amount;
 
-        const numericAmount = isKgItem(item)
+        const kgItem = isKgItem(item);
+        const numericAmount = kgItem
           ? Number((item as any).weightKg || 0)
           : Number((item as any).qty || 0);
 
-        totals[name] += Number.isFinite(numericAmount) ? numericAmount : 0;
+        totals[name].amount += Number.isFinite(numericAmount)
+          ? numericAmount
+          : 0;
+        totals[name].packets += kgItem ? packedPacketCount(item) : 0;
+        totals[name].isKg = totals[name].isKg || kgItem;
       }
 
       const orderTotal = Number((order as any).total || 0);
@@ -1398,7 +1534,20 @@ export default function OrdersTab({
       "",
       "",
       "",
-      ...productNames.map((productName) => totals[productName] || 0),
+      ...productNames.map((productName) => {
+        const total = totals[productName];
+
+        if (!total) return 0;
+
+        if (total.isKg) {
+          const packetLabel = `${total.packets} packet${
+            total.packets === 1 ? "" : "s"
+          }`;
+          return `${packetLabel} / ${total.amount.toFixed(3)} kg`;
+        }
+
+        return total.amount || 0;
+      }),
       grandTotal,
     ];
 
@@ -1432,6 +1581,9 @@ export default function OrdersTab({
   function exportDeliveryRunPdf() {
     const params = new URLSearchParams();
 
+    if (selectedDeliveryRunWindowId) {
+      params.set("windowId", selectedDeliveryRunWindowId);
+    }
     if (deliveryRunLocationId) params.set("locationId", deliveryRunLocationId);
     if (deliveryRunScheduleId) params.set("scheduleId", deliveryRunScheduleId);
 
@@ -1517,6 +1669,7 @@ export default function OrdersTab({
                 onExpandedRowKeysChange={setExpandedRowKeys}
                 onStatusUpdate={handleStatusUpdate}
                 onDelete={handleDelete}
+                onDownloadDeliveryNote={downloadDeliveryNote}
                 selectedRowKeys={selectedRowKeys}
                 onSelectedRowKeysChange={setSelectedRowKeys}
                 onOpenPacking={openPacking}
@@ -1547,6 +1700,7 @@ export default function OrdersTab({
                   onExpandedRowKeysChange={setExpandedRowKeys}
                   onStatusUpdate={handleStatusUpdate}
                   onDelete={handleDelete}
+                  onDownloadDeliveryNote={downloadDeliveryNote}
                   selectedRowKeys={selectedRowKeys}
                   onSelectedRowKeysChange={setSelectedRowKeys}
                   onOpenPacking={openPacking}
@@ -1774,13 +1928,13 @@ export default function OrdersTab({
                     alignItems: "center",
                   }}
                 >
-                  <Tag color="blue" style={{ margin: 0, justifySelf: "start" }}>
-                    Delivery notes PDF
-                  </Tag>
-
-                  <Select
-                    allowClear
-                    placeholder="Filter by location"
+	                  <Tag color="blue" style={{ margin: 0, justifySelf: "start" }}>
+	                    Delivery notes PDF
+	                  </Tag>
+	
+	                  <Select
+	                    allowClear
+	                    placeholder="Filter by location"
                     style={{ width: "100%" }}
                     value={deliveryRunLocationId || undefined}
                     onChange={(v) => {
@@ -1860,19 +2014,95 @@ export default function OrdersTab({
       )}
 
       {!isMobile && (
-        <div
-          style={{
-            marginBottom: 12,
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-          }}
-        >
-          <Text type="secondary">
-            Selected orders: {selectedRowKeys.length}
-          </Text>
-        </div>
+        <>
+          <Card size="small" style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
+              <div>
+                <Text type="secondary">All orders total</Text>
+                <div
+                  style={{
+                    color: "var(--aca-forest)",
+                    fontSize: 28,
+                    fontWeight: 900,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {money(allOrderSummary.total)}
+                </div>
+                <Text type="secondary">{allOrderSummary.count} orders</Text>
+              </div>
+
+              <div>
+                <Text type="secondary">Visible order total</Text>
+                <div
+                  style={{
+                    color: "var(--aca-forest)",
+                    fontSize: 28,
+                    fontWeight: 900,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {money(visibleOrderSummary.total)}
+                </div>
+              </div>
+
+              <div>
+                <Text type="secondary">Visible orders</Text>
+                <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.2 }}>
+                  {visibleOrderSummary.count}
+                </div>
+              </div>
+
+              <div>
+                <Text type="secondary">Average order</Text>
+                <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.2 }}>
+                  {money(visibleOrderSummary.average)}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <Text type="secondary">
+              Selected orders: {selectedRowKeys.length}
+            </Text>
+          </div>
+        </>
       )}
+
+      {isMobile ? (
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Space direction="vertical" size={2}>
+            <Text type="secondary">All orders total</Text>
+            <Text strong style={{ color: "var(--aca-forest)", fontSize: 22 }}>
+              {money(allOrderSummary.total)}
+            </Text>
+            <Text type="secondary">{allOrderSummary.count} orders overall</Text>
+            <Divider style={{ margin: "8px 0" }} />
+            <Text type="secondary">Visible order total</Text>
+            <Text strong style={{ color: "var(--aca-forest)", fontSize: 22 }}>
+              {money(visibleOrderSummary.total)}
+            </Text>
+            <Text type="secondary">
+              {visibleOrderSummary.count} orders • Avg{" "}
+              {money(visibleOrderSummary.average)}
+            </Text>
+          </Space>
+        </Card>
+      ) : null}
 
       {grouped.length === 0 ? (
         <Empty
@@ -1968,11 +2198,11 @@ export default function OrdersTab({
         height="60vh"
         open={deliveryRunOpen}
         onClose={() => setDeliveryRunOpen(false)}
-      >
-        <div style={{ display: "grid", gap: 12 }}>
-          <Select
-            allowClear
-            placeholder="Filter by location"
+	      >
+	        <div style={{ display: "grid", gap: 12 }}>
+	          <Select
+	            allowClear
+	            placeholder="Filter by location"
             style={{ width: "100%" }}
             value={deliveryRunLocationId || undefined}
             onChange={(v) => {
