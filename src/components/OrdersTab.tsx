@@ -20,11 +20,13 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
 import type { MenuProps } from "antd";
 import {
+  DeleteOutlined,
   DownloadOutlined,
   FilePdfOutlined,
   FilterOutlined,
@@ -542,16 +544,17 @@ function OrderTable({
         {
           title: "",
           key: "actions",
-          width: isMobile ? 180 : 220,
+          width: 88,
           render: (_: any, row: AdminOrder) => (
-            <Space>
-              <Button
-                size="small"
-                icon={<FilePdfOutlined />}
-                onClick={() => onDownloadDeliveryNote(row)}
-              >
-                Delivery Note
-              </Button>
+            <Space size={4} wrap={false}>
+              <Tooltip title="Download delivery note">
+                <Button
+                  aria-label="Download delivery note"
+                  size="small"
+                  icon={<FilePdfOutlined />}
+                  onClick={() => onDownloadDeliveryNote(row)}
+                />
+              </Tooltip>
               <Popconfirm
                 title="Delete this order?"
                 description="This permanently removes the order and cannot be undone."
@@ -559,9 +562,14 @@ function OrderTable({
                 okText="Delete"
                 okButtonProps={{ danger: true }}
               >
-                <Button danger size="small">
-                  Delete
-                </Button>
+                <Tooltip title="Delete order">
+                  <Button
+                    aria-label="Delete order"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                  />
+                </Tooltip>
               </Popconfirm>
             </Space>
           ),
