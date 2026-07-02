@@ -1327,11 +1327,21 @@ export default function OrdersTab({
   }
 
   function exportPackingList() {
-    const ordersToExport = packingScheduleId
-      ? displayOrders.filter(
-        (o) => (o as any).deliveryScheduleId === packingScheduleId,
-      )
-      : displayOrders;
+    const ordersToExport = displayOrders.filter((o) => {
+      if (String(o.status || "").toUpperCase() === "DELIVERED") {
+        return false;
+      }
+
+      if (currentWindowId && String((o as any).windowId || "") !== currentWindowId) {
+        return false;
+      }
+
+      if (packingScheduleId) {
+        return String((o as any).deliveryScheduleId || "") === packingScheduleId;
+      }
+
+      return true;
+    });
 
     const targetSchedule = packingScheduleId
       ? schedules.find((s) => s.id === packingScheduleId)
@@ -1357,10 +1367,7 @@ export default function OrdersTab({
 
     const headers = ["Customer", "Phone", "Order No", ...productNames];
     const rows: any[][] = [];
-    const totals: Record<
-      string,
-      { amount: number; packets: number; isKg: boolean }
-    > = {};
+    const totals: Record<string, number> = {};
 
     for (const p of productNames) {
       totals[p] = 0;
@@ -1485,7 +1492,10 @@ export default function OrdersTab({
       "Order Total",
     ];
     const rows: any[][] = [];
-    const totals: Record<string, number> = {};
+    const totals: Record<
+      string,
+      { amount: number; packets: number; isKg: boolean }
+    > = {};
     let grandTotal = 0;
 
     for (const productName of productNames) {
