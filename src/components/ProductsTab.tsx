@@ -38,6 +38,7 @@ type ProductForm = {
   stockQty: number;
   isActive: boolean;
   isFifthQuarter: boolean;
+  isForProcessing: boolean;
   categoryId: string | null;
   cutType?: string;
   avgWeightValue?: number | null;
@@ -57,8 +58,10 @@ function resolveImageUrl(url?: string | null): string | null {
   return null;
 }
 
-function fmtGrams(g: number | null | undefined) {
+function fmtGrams(g: number | null | undefined, productUnit?: string) {
   if (g === null || g === undefined) return "—";
+  if (productUnit === "kg") return `${(g / 1000).toFixed(2)} kg`;
+  if (productUnit === "g") return `${g} g`;
   return g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g} g`;
 }
 
@@ -71,11 +74,27 @@ function toGrams(
   return unit === "kg" ? Math.round(value * 1000) : Math.round(value);
 }
 
-function fromGrams(grams: number | null | undefined): {
+function fromGrams(
+  grams: number | null | undefined,
+  preferredUnit?: string,
+): {
   value: number | null;
   unit: "g" | "kg";
 } {
-  if (grams === null || grams === undefined) return { value: null, unit: "g" };
+  const unit =
+    preferredUnit === "kg" || preferredUnit === "g"
+      ? preferredUnit
+      : grams !== null && grams !== undefined && grams >= 1000
+        ? "kg"
+        : "g";
+  if (grams === null || grams === undefined) return { value: null, unit };
+  if (unit === "kg") {
+    return {
+      value: parseFloat((grams / 1000).toFixed(3)),
+      unit,
+    };
+  }
+  if (preferredUnit === "g") return { value: grams, unit };
   if (grams >= 1000 && grams % 1000 === 0)
     return { value: grams / 1000, unit: "kg" };
   if (grams >= 1000)
@@ -103,6 +122,8 @@ export default function ProductsTab({
     null as AdminProduct | null,
   );
   const [productForm] = Form.useForm();
+  const isForProcessing = Form.useWatch("isForProcessing", productForm);
+  const selectedProductUnit = Form.useWatch("unit", productForm);
 
   const [wasteModalOpen, setWasteModalOpen] = useState(false);
   const [wasteProduct, setWasteProduct] = useState(null as AdminProduct | null);
@@ -162,6 +183,7 @@ export default function ProductsTab({
       unit: "kg",
       isActive: true,
       isFifthQuarter: false,
+      isForProcessing: false,
       stockQty: 0,
       retailPrice: 0,
       wholesalePrice: 0,
@@ -171,7 +193,7 @@ export default function ProductsTab({
       description: "",
       cutType: "",
       avgWeightValue: null,
-      avgWeightUnit: "g",
+      avgWeightUnit: "kg",
     });
     resetPendingImage();
     setProductModalOpen(true);
@@ -180,7 +202,10 @@ export default function ProductsTab({
   function openEditProduct(p: AdminProduct) {
     setEditingProduct(p);
     productForm.resetFields();
-    const { value, unit } = fromGrams((p as any).avgWeightG ?? null);
+    const { value, unit } = fromGrams(
+      (p as any).avgWeightG ?? null,
+      p.unit,
+    );
     productForm.setFieldsValue({
       name: p.name,
       description: p.description || "",
@@ -191,6 +216,7 @@ export default function ProductsTab({
       stockQty: p.stockQty,
       isActive: p.isActive,
       isFifthQuarter: Boolean((p as any).isFifthQuarter),
+      isForProcessing: Boolean(p.isForProcessing),
       categoryId: p.categoryId ?? null,
       cutType: (p as any).cutType || "",
       avgWeightValue: value,
@@ -243,6 +269,7 @@ export default function ProductsTab({
         stockQty: p.stockQty,
         isActive: true,
         isFifthQuarter: Boolean((p as any).isFifthQuarter),
+        isForProcessing: Boolean(p.isForProcessing),
         categoryId: p.categoryId ?? null,
         cutType: (p as any).cutType ?? "",
         avgWeightG: (p as any).avgWeightG ?? null,
@@ -319,9 +346,10 @@ export default function ProductsTab({
       retailPrice: values.retailPrice,
       wholesalePrice: values.wholesalePrice,
       costPrice: values.costPrice,
-      stockQty: values.stockQty,
+      stockQty: values.isForProcessing ? 0 : values.stockQty,
       isActive: values.isActive ?? true,
       isFifthQuarter: values.isFifthQuarter ?? false,
+      isForProcessing: values.isForProcessing ?? false,
       categoryId: values.categoryId ?? null,
       cutType: (values.cutType || "").trim(),
       avgWeightG,
@@ -350,6 +378,7 @@ export default function ProductsTab({
       fd.append("stockQty", String(payload.stockQty));
       fd.append("isActive", String(payload.isActive));
       fd.append("isFifthQuarter", String(payload.isFifthQuarter));
+      fd.append("isForProcessing", String(payload.isForProcessing));
       fd.append("categoryId", payload.categoryId ?? "");
       fd.append("cutType", payload.cutType || "");
       fd.append(
@@ -595,6 +624,7 @@ export default function ProductsTab({
           {(p as any).isFifthQuarter ? (
             <Tag color="purple">5th Quarter</Tag>
           ) : null}
+          {p.isForProcessing ? <Tag color="orange">For Processing</Tag> : null}
         </Space>
       ),
     },
@@ -614,8 +644,11 @@ export default function ProductsTab({
       dataIndex: "avgWeightG",
       key: "avgWeightG",
       width: 120,
-      render: (v: any) =>
-        fmtGrams(v === null || v === undefined ? null : Number(v)),
+      render: (v: any, p: AdminProduct) =>
+        fmtGrams(
+          v === null || v === undefined ? null : Number(v),
+          p.unit,
+        ),
     },
     {
       title: "Pricing",
@@ -638,7 +671,14 @@ export default function ProductsTab({
         </div>
       ),
     },
-    { title: "Stock", dataIndex: "stockQty", key: "stockQty", width: 90 },
+    {
+      title: "Stock",
+      dataIndex: "stockQty",
+      key: "stockQty",
+      width: 90,
+      render: (_: any, p: AdminProduct) =>
+        p.isForProcessing ? <Text type="secondary">Processing only</Text> : p.stockQty,
+    },
     {
       title: "Category",
       key: "category",
@@ -858,6 +898,19 @@ export default function ProductsTab({
             <Switch />
           </Form.Item>
 
+          <Form.Item
+            name="isForProcessing"
+            label="For processing only"
+            valuePropName="checked"
+            extra="Included in carcass yield, but hidden from the shop and not added to sellable packet stock."
+          >
+            <Switch
+              onChange={(checked) => {
+                if (checked) productForm.setFieldValue("stockQty", 0);
+              }}
+            />
+          </Form.Item>
+
           <Form.Item name="cutType" label="Cut type (optional)">
             <Input placeholder="e.g. Economy, Super, Prime..." />
           </Form.Item>
@@ -868,6 +921,26 @@ export default function ProductsTab({
 
           <Form.Item name="unit" label="Unit" rules={[{ required: true }]}>
             <Select
+              onChange={(nextUnit) => {
+                const currentValue = productForm.getFieldValue("avgWeightValue");
+                const currentUnit =
+                  productForm.getFieldValue("avgWeightUnit") || "g";
+                const grams = toGrams(currentValue, currentUnit);
+                const nextWeightUnit =
+                  nextUnit === "kg" || nextUnit === "g"
+                    ? nextUnit
+                    : currentUnit;
+
+                productForm.setFieldsValue({
+                  avgWeightUnit: nextWeightUnit,
+                  avgWeightValue:
+                    grams === null
+                      ? currentValue
+                      : nextWeightUnit === "kg"
+                        ? parseFloat((grams / 1000).toFixed(3))
+                        : grams,
+                });
+              }}
               options={[
                 { value: "kg", label: "kg — sold by kilogram" },
                 { value: "pack", label: "pack — sold by pack" },
@@ -892,6 +965,10 @@ export default function ProductsTab({
               <Form.Item name="avgWeightUnit" noStyle initialValue="g">
                 <Select
                   style={{ width: 80 }}
+                  disabled={
+                    selectedProductUnit === "kg" ||
+                    selectedProductUnit === "g"
+                  }
                   options={[
                     { value: "g", label: "g" },
                     { value: "kg", label: "kg" },
@@ -930,7 +1007,11 @@ export default function ProductsTab({
             label="Stock quantity"
             rules={[{ required: true }]}
           >
-            <InputNumber min={0} style={{ width: "100%" }} />
+            <InputNumber
+              min={0}
+              disabled={Boolean(isForProcessing)}
+              style={{ width: "100%" }}
+            />
           </Form.Item>
 
           <Form.Item name="categoryId" label="Category">

@@ -839,10 +839,12 @@ export default function OrdersTab({
 
   const productOptions = useMemo(
     () =>
-      adminProducts.map((p) => ({
-        value: p.id,
-        label: `${p.name} (${String(p.unit || "pack")})`,
-      })),
+      adminProducts
+        .filter((p) => !p.isForProcessing)
+        .map((p) => ({
+          value: p.id,
+          label: `${p.name} (${String(p.unit || "pack")})`,
+        })),
     [adminProducts],
   );
 

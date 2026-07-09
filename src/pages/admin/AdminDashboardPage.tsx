@@ -47,6 +47,7 @@ export type AdminProduct = {
   costPrice: string | number;
   stockQty: number;
   isActive: boolean;
+  isForProcessing?: boolean;
   imageUrl?: string | null;
   sortOrder?: number | null;
   categoryId?: string | null;

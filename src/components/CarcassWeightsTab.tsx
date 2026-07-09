@@ -30,6 +30,7 @@ type ProductOption = {
   stockQty?: number;
   categoryId?: string | null;
   isFifthQuarter?: boolean;
+  isForProcessing?: boolean;
 };
 
 type CategoryOption = {
@@ -51,7 +52,31 @@ type CarcassDryWeightRow = {
     unit: string;
     categoryId?: string | null;
     isFifthQuarter?: boolean;
+    isForProcessing?: boolean;
   };
+  processingBatches?: ProcessingBatch[];
+};
+
+type ProcessingOutput = {
+  id: string;
+  productId: string;
+  totalWeightKg: number | string;
+  packetCount: number;
+  product?: {
+    id: string;
+    name: string;
+    unit: string;
+    isForProcessing?: boolean;
+  };
+};
+
+type ProcessingBatch = {
+  id: string;
+  sourceDryWeightId: string;
+  processedAt: string;
+  inputWeightKg: number | string;
+  notes?: string | null;
+  outputs?: ProcessingOutput[];
 };
 
 type CarcassBatchRecord = {
@@ -125,6 +150,17 @@ type DryForm = {
   items: DryItemForm[];
 };
 
+type ProcessingForm = {
+  processedAt: dayjs.Dayjs;
+  inputWeightKg: number;
+  notes?: string;
+  outputs: Array<{
+    productId: string;
+    totalWeightKg: number;
+    packetCount: number;
+  }>;
+};
+
 function n(v: any): number {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -169,17 +205,24 @@ export default function CarcassWeightsTab({
 
   const [wetModalOpen, setWetModalOpen] = useState(false);
   const [dryModalOpen, setDryModalOpen] = useState(false);
+  const [processingModalOpen, setProcessingModalOpen] = useState(false);
 
   const [editingWet, setEditingWet] = useState<CarcassBatchRecord | null>(null);
   const [dryTarget, setDryTarget] = useState<CarcassBatchRecord | null>(null);
+  const [processingSource, setProcessingSource] =
+    useState<CarcassDryWeightRow | null>(null);
+  const [processingTarget, setProcessingTarget] =
+    useState<CarcassBatchRecord | null>(null);
 
   const [wetForm] = Form.useForm<WetForm>();
   const [dryForm] = Form.useForm<DryForm>();
+  const [processingForm] = Form.useForm<ProcessingForm>();
 
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [drySearch, setDrySearch] = useState("");
+  const [savingProcessing, setSavingProcessing] = useState(false);
 
   const sortedRecords = useMemo(
     () =>
@@ -191,6 +234,10 @@ export default function CarcassWeightsTab({
 
   const wetFormWatch = Form.useWatch([], wetForm);
   const dryItemsWatch = Form.useWatch("items", dryForm) || [];
+  const processingInputWatch =
+    Form.useWatch("inputWeightKg", processingForm) || 0;
+  const processingOutputsWatch =
+    Form.useWatch("outputs", processingForm) || [];
   const selectedWetCategoryId = Form.useWatch("meatCategoryId", wetForm);
 
   const fifthQuarterProducts = useMemo(
@@ -203,6 +250,17 @@ export default function CarcassWeightsTab({
 
   const nonFifthQuarterProducts = useMemo(
     () => productOptions.filter((p) => !p.isFifthQuarter),
+    [productOptions],
+  );
+
+  const finishedProductOptions = useMemo(
+    () =>
+      productOptions
+        .filter((p) => !p.isForProcessing)
+        .map((p) => ({
+          value: p.id,
+          label: `${p.name} (${p.unit})`,
+        })),
     [productOptions],
   );
 
@@ -228,10 +286,17 @@ export default function CarcassWeightsTab({
 
   const fifthQuarterPacketsPreview = useMemo(() => {
     return (fifthQuarterItemsWatch || []).reduce(
-      (sum: number, item: any) => sum + n(item?.packetCount),
+      (sum: number, item: any) => {
+        const product = productOptions.find(
+          (candidate) => candidate.id === item?.productId,
+        );
+        return product?.isForProcessing
+          ? sum
+          : sum + n(item?.packetCount);
+      },
       0,
     );
-  }, [fifthQuarterItemsWatch]);
+  }, [fifthQuarterItemsWatch, productOptions]);
 
   const dryOnlyTotalPreview = useMemo(() => {
     return (dryItemsWatch || []).reduce(
@@ -242,14 +307,35 @@ export default function CarcassWeightsTab({
 
   const dryOnlyPacketsPreview = useMemo(() => {
     return (dryItemsWatch || []).reduce(
-      (sum: number, item: any) => sum + n(item?.packetCount),
+      (sum: number, item: any) => {
+        const product = productOptions.find(
+          (candidate) => candidate.id === item?.productId,
+        );
+        return product?.isForProcessing
+          ? sum
+          : sum + n(item?.packetCount);
+      },
       0,
     );
-  }, [dryItemsWatch]);
+  }, [dryItemsWatch, productOptions]);
 
   const dryLossPreview = useMemo(
     () => lossPct(dryTarget?.totalCarcassWeightKg, dryOnlyTotalPreview),
     [dryTarget, dryOnlyTotalPreview],
+  );
+
+  const processingOutputWeightPreview = useMemo(
+    () =>
+      processingOutputsWatch.reduce(
+        (total: number, output: any) => total + n(output?.totalWeightKg),
+        0,
+      ),
+    [processingOutputsWatch],
+  );
+
+  const processingLossPreview = Math.max(
+    0,
+    n(processingInputWatch) - processingOutputWeightPreview,
   );
 
   async function loadProductsForCreation() {
@@ -429,6 +515,51 @@ export default function CarcassWeightsTab({
     }
   }
 
+  function processedWeightKg(source: CarcassDryWeightRow) {
+    return (source.processingBatches || []).reduce(
+      (total, batch) => total + n(batch.inputWeightKg),
+      0,
+    );
+  }
+
+  function availableProcessingWeightKg(source: CarcassDryWeightRow) {
+    return Math.max(0, n(source.totalWeightKg) - processedWeightKg(source));
+  }
+
+  async function openProcessProduct(
+    record: CarcassBatchRecord,
+    source: CarcassDryWeightRow,
+  ) {
+    setLoadingProducts(true);
+    processingForm.resetFields();
+
+    try {
+      const res = await api.get(
+        `/api/admin/carcass-weights/${encodeURIComponent(record.animalId)}/products`,
+      );
+      setProductOptions((res.data?.products || []) as ProductOption[]);
+      setProcessingTarget(record);
+      setProcessingSource(source);
+      processingForm.setFieldsValue({
+        processedAt: dayjs(),
+        inputWeightKg: availableProcessingWeightKg(source),
+        notes: "",
+        outputs: [
+          {
+            productId: "",
+            totalWeightKg: 0,
+            packetCount: 1,
+          },
+        ],
+      });
+      setProcessingModalOpen(true);
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || "Failed to load products");
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
   async function saveWetRecord() {
     const values = await wetForm.validateFields();
 
@@ -526,6 +657,52 @@ export default function CarcassWeightsTab({
       onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Save failed");
+    }
+  }
+
+  async function saveProcessingBatch() {
+    if (!processingSource) return;
+
+    const values = await processingForm.validateFields();
+    const outputs = (values.outputs || []).map((output) => ({
+      productId: String(output.productId || "").trim(),
+      totalWeightKg: n(output.totalWeightKg),
+      packetCount: Math.trunc(n(output.packetCount)),
+    }));
+
+    if (processingOutputWeightPreview > n(values.inputWeightKg) + 0.005) {
+      message.error("Finished-product weight cannot exceed the input weight");
+      return;
+    }
+
+    setSavingProcessing(true);
+    try {
+      await api.post("/api/admin/carcass-weights/process", {
+        sourceDryWeightId: processingSource.id,
+        processedAt: values.processedAt.toISOString(),
+        inputWeightKg: n(values.inputWeightKg),
+        notes: values.notes?.trim() || "",
+        outputs,
+      });
+      message.success("Product processed and finished stock added");
+      setProcessingModalOpen(false);
+      setProcessingSource(null);
+      setProcessingTarget(null);
+      onReload();
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || "Processing failed");
+    } finally {
+      setSavingProcessing(false);
+    }
+  }
+
+  async function reverseProcessingBatch(batchId: string) {
+    try {
+      await api.delete(`/api/admin/carcass-weights/process/${batchId}`);
+      message.success("Processing batch reversed and finished stock removed");
+      onReload();
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || "Could not reverse processing");
     }
   }
 
@@ -793,8 +970,14 @@ export default function CarcassWeightsTab({
                       {
                         title: "Product",
                         key: "product",
-                        render: (_: any, item: CarcassDryWeightRow) =>
-                          item.product?.name || "—",
+                        render: (_: any, item: CarcassDryWeightRow) => (
+                          <Space size={6} wrap>
+                            <span>{item.product?.name || "—"}</span>
+                            {item.product?.isForProcessing ? (
+                              <Tag color="orange">For Processing</Tag>
+                            ) : null}
+                          </Space>
+                        ),
                       },
                       {
                         title: "Weight",
@@ -802,6 +985,25 @@ export default function CarcassWeightsTab({
                         key: "totalWeightKg",
                         width: 130,
                         render: (v: any) => fmtKg(v),
+                      },
+                      {
+                        title: "Processing",
+                        key: "processing",
+                        width: 190,
+                        render: (_: any, item: CarcassDryWeightRow) =>
+                          item.product?.isForProcessing ? (
+                            <div style={{ display: "grid", gap: 2 }}>
+                              <Text>
+                                Processed: {fmtKg(processedWeightKg(item))}
+                              </Text>
+                              <Text type="secondary">
+                                Available:{" "}
+                                {fmtKg(availableProcessingWeightKg(item))}
+                              </Text>
+                            </div>
+                          ) : (
+                            <Text type="secondary">—</Text>
+                          ),
                       },
                       {
                         title: "Packets",
@@ -816,8 +1018,108 @@ export default function CarcassWeightsTab({
                         render: (v: any) =>
                           v ? v : <Text type="secondary">—</Text>,
                       },
+                      {
+                        title: "",
+                        key: "processAction",
+                        width: 120,
+                        render: (_: any, item: CarcassDryWeightRow) =>
+                          canManage &&
+                          item.product?.isForProcessing &&
+                          availableProcessingWeightKg(item) > 0.005 ? (
+                            <Button
+                              type="primary"
+                              size="small"
+                              onClick={() => openProcessProduct(row, item)}
+                            >
+                              Process
+                            </Button>
+                          ) : null,
+                      },
                     ]}
                   />
+
+                  {(row.dryWeights || []).some(
+                    (item) => (item.processingBatches || []).length > 0,
+                  ) ? (
+                    <div style={{ marginTop: 14 }}>
+                      <Text strong>Processing History</Text>
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          marginTop: 10,
+                        }}
+                      >
+                        {(row.dryWeights || []).flatMap((source) =>
+                          (source.processingBatches || []).map((batch) => {
+                            const outputWeight = (batch.outputs || []).reduce(
+                              (total, output) =>
+                                total + n(output.totalWeightKg),
+                              0,
+                            );
+                            const loss = Math.max(
+                              0,
+                              n(batch.inputWeightKg) - outputWeight,
+                            );
+
+                            return (
+                              <Card key={batch.id} size="small">
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 12,
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <div style={{ display: "grid", gap: 4 }}>
+                                    <Text strong>
+                                      {source.product?.name || "Processing"} —{" "}
+                                      {fmtKg(batch.inputWeightKg)} input
+                                    </Text>
+                                    <Text type="secondary">
+                                      {dayjs(batch.processedAt).format(
+                                        "D MMM YYYY",
+                                      )}{" "}
+                                      • output {fmtKg(outputWeight)} • loss{" "}
+                                      {fmtKg(loss)}
+                                    </Text>
+                                    <Space wrap>
+                                      {(batch.outputs || []).map((output) => (
+                                        <Tag key={output.id} color="green">
+                                          {output.product?.name || "Product"}:{" "}
+                                          {output.packetCount} packs /{" "}
+                                          {fmtKg(output.totalWeightKg)}
+                                        </Tag>
+                                      ))}
+                                    </Space>
+                                    {batch.notes ? (
+                                      <Text>{batch.notes}</Text>
+                                    ) : null}
+                                  </div>
+                                  {canManage ? (
+                                    <Popconfirm
+                                      title="Reverse this processing batch?"
+                                      description="Finished-product packet stock will be removed."
+                                      okText="Reverse"
+                                      okButtonProps={{ danger: true }}
+                                      onConfirm={() =>
+                                        reverseProcessingBatch(batch.id)
+                                      }
+                                    >
+                                      <Button danger size="small">
+                                        Reverse
+                                      </Button>
+                                    </Popconfirm>
+                                  ) : null}
+                                </div>
+                              </Card>
+                            );
+                          }),
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div>
@@ -854,8 +1156,14 @@ export default function CarcassWeightsTab({
                       {
                         title: "Product",
                         key: "product",
-                        render: (_: any, item: CarcassDryWeightRow) =>
-                          item.product?.name || "—",
+                        render: (_: any, item: CarcassDryWeightRow) => (
+                          <Space size={6} wrap>
+                            <span>{item.product?.name || "—"}</span>
+                            {item.product?.isForProcessing ? (
+                              <Tag color="orange">For Processing</Tag>
+                            ) : null}
+                          </Space>
+                        ),
                       },
                       {
                         title: "Weight",
@@ -863,6 +1171,25 @@ export default function CarcassWeightsTab({
                         key: "totalWeightKg",
                         width: 130,
                         render: (v: any) => fmtKg(v),
+                      },
+                      {
+                        title: "Processing",
+                        key: "processing",
+                        width: 190,
+                        render: (_: any, item: CarcassDryWeightRow) =>
+                          item.product?.isForProcessing ? (
+                            <div style={{ display: "grid", gap: 2 }}>
+                              <Text>
+                                Processed: {fmtKg(processedWeightKg(item))}
+                              </Text>
+                              <Text type="secondary">
+                                Available:{" "}
+                                {fmtKg(availableProcessingWeightKg(item))}
+                              </Text>
+                            </div>
+                          ) : (
+                            <Text type="secondary">—</Text>
+                          ),
                       },
                       {
                         title: "Packets",
@@ -876,6 +1203,23 @@ export default function CarcassWeightsTab({
                         key: "notes",
                         render: (v: any) =>
                           v ? v : <Text type="secondary">—</Text>,
+                      },
+                      {
+                        title: "",
+                        key: "processAction",
+                        width: 120,
+                        render: (_: any, item: CarcassDryWeightRow) =>
+                          canManage &&
+                          item.product?.isForProcessing &&
+                          availableProcessingWeightKg(item) > 0.005 ? (
+                            <Button
+                              type="primary"
+                              size="small"
+                              onClick={() => openProcessProduct(row, item)}
+                            >
+                              Process
+                            </Button>
+                          ) : null,
                       },
                     ]}
                   />
@@ -1118,7 +1462,9 @@ export default function CarcassWeightsTab({
                           <Text type="secondary">
                             {product?.name || "Product"}
                             {product?.unit ? ` • unit: ${product.unit}` : ""}
-                            {typeof product?.stockQty === "number"
+                            {product?.isForProcessing
+                              ? " • processing only: packets do not enter sellable stock"
+                              : typeof product?.stockQty === "number"
                               ? ` • current stock: ${product.stockQty}`
                               : ""}
                           </Text>
@@ -1338,6 +1684,227 @@ export default function CarcassWeightsTab({
                 {dryOnlyPacketsPreview}
               </Text>
             </div>
+          </Card>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={
+          processingSource
+            ? `Process ${processingSource.product?.name || "Product"} — Tag ${processingTarget?.animalId || ""}`
+            : "Process Product"
+        }
+        open={processingModalOpen}
+        onCancel={() => {
+          setProcessingModalOpen(false);
+          setProcessingSource(null);
+          setProcessingTarget(null);
+        }}
+        onOk={saveProcessingBatch}
+        okText="Process and Add Stock"
+        width={900}
+        confirmLoading={savingProcessing || loadingProducts}
+      >
+        <Form form={processingForm} layout="vertical">
+          <Card size="small" style={{ marginBottom: 16, background: "#fafafa" }}>
+            <Space size="large" wrap>
+              <Text>
+                <strong>Original weight:</strong>{" "}
+                {fmtKg(processingSource?.totalWeightKg)}
+              </Text>
+              <Text>
+                <strong>Already processed:</strong>{" "}
+                {fmtKg(
+                  processingSource
+                    ? processedWeightKg(processingSource)
+                    : 0,
+                )}
+              </Text>
+              <Text>
+                <strong>Available:</strong>{" "}
+                {fmtKg(
+                  processingSource
+                    ? availableProcessingWeightKg(processingSource)
+                    : 0,
+                )}
+              </Text>
+            </Space>
+          </Card>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <Form.Item
+              name="processedAt"
+              label="Processing Date"
+              rules={[{ required: true, message: "Date is required" }]}
+            >
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Form.Item
+              name="inputWeightKg"
+              label="Input Weight (kg)"
+              rules={[
+                { required: true, message: "Input weight is required" },
+                {
+                  validator: async (_, value) => {
+                    const available = processingSource
+                      ? availableProcessingWeightKg(processingSource)
+                      : 0;
+                    if (n(value) <= 0) {
+                      throw new Error("Input weight must be greater than zero");
+                    }
+                    if (n(value) > available + 0.005) {
+                      throw new Error(
+                        `Only ${available.toFixed(2)} kg is available`,
+                      );
+                    }
+                  },
+                },
+              ]}
+            >
+              <InputNumber
+                min={0.01}
+                max={
+                  processingSource
+                    ? availableProcessingWeightKg(processingSource)
+                    : undefined
+                }
+                step={0.1}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+          </div>
+
+          <Divider orientation="left">Finished Products</Divider>
+
+          <Form.List name="outputs">
+            {(fields, { add, remove }) => (
+              <div style={{ display: "grid", gap: 10 }}>
+                {fields.map((field) => (
+                  <Card key={field.key} size="small">
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr auto",
+                        gap: 12,
+                        alignItems: "start",
+                      }}
+                    >
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "productId"]}
+                        label="Finished Product"
+                        rules={[{ required: true, message: "Select a product" }]}
+                      >
+                        <Select
+                          showSearch
+                          optionFilterProp="label"
+                          placeholder="Select product"
+                          options={finishedProductOptions}
+                        />
+                      </Form.Item>
+
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "totalWeightKg"]}
+                        label="Weight (kg)"
+                        rules={[
+                          { required: true, message: "Enter weight" },
+                          {
+                            validator: async (_, value) => {
+                              if (n(value) <= 0) {
+                                throw new Error("Must be greater than zero");
+                              }
+                            },
+                          },
+                        ]}
+                      >
+                        <InputNumber
+                          min={0.01}
+                          step={0.1}
+                          style={{ width: "100%" }}
+                        />
+                      </Form.Item>
+
+                      <Form.Item
+                        {...field}
+                        name={[field.name, "packetCount"]}
+                        label="Packets"
+                        rules={[
+                          { required: true, message: "Enter packets" },
+                          {
+                            validator: async (_, value) => {
+                              if (!Number.isInteger(n(value)) || n(value) <= 0) {
+                                throw new Error("Enter whole packets");
+                              }
+                            },
+                          },
+                        ]}
+                      >
+                        <InputNumber
+                          min={1}
+                          step={1}
+                          style={{ width: "100%" }}
+                        />
+                      </Form.Item>
+
+                      <Button
+                        danger
+                        style={{ marginTop: 30 }}
+                        disabled={fields.length === 1}
+                        onClick={() => remove(field.name)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+
+                <Button
+                  onClick={() =>
+                    add({
+                      productId: "",
+                      totalWeightKg: 0,
+                      packetCount: 1,
+                    })
+                  }
+                >
+                  Add Finished Product
+                </Button>
+              </div>
+            )}
+          </Form.List>
+
+          <Form.Item name="notes" label="Notes" style={{ marginTop: 16 }}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
+
+          <Card size="small" style={{ background: "#fafafa" }}>
+            <Space size="large" wrap>
+              <Text>
+                <strong>Input:</strong> {fmtKg(processingInputWatch)}
+              </Text>
+              <Text>
+                <strong>Finished output:</strong>{" "}
+                {fmtKg(processingOutputWeightPreview)}
+              </Text>
+              <Text
+                type={
+                  processingOutputWeightPreview > n(processingInputWatch) + 0.005
+                    ? "danger"
+                    : "secondary"
+                }
+              >
+                <strong>Processing loss:</strong>{" "}
+                {fmtKg(processingLossPreview)}
+              </Text>
+            </Space>
           </Card>
         </Form>
       </Modal>

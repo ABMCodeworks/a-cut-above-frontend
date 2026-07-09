@@ -98,8 +98,13 @@ function money(n: number | null | undefined) {
   return n === null || n === undefined ? "—" : `$${n.toFixed(2)}`;
 }
 
-function fmtGrams(g: number | null | undefined): string | null {
+function fmtGrams(
+  g: number | null | undefined,
+  productUnit?: string,
+): string | null {
   if (g === null || g === undefined) return null;
+  if (productUnit === "kg") return `${(g / 1000).toFixed(2)} kg`;
+  if (productUnit === "g") return `${g} g`;
   return g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g} g`;
 }
 
@@ -1139,7 +1144,7 @@ export default function ShopPage() {
                 locationUnavailable ||
                 (remaining !== null && remaining <= 0);
 
-              const avgWeightLabel = fmtGrams(p.avgWeightG);
+              const avgWeightLabel = fmtGrams(p.avgWeightG, unitLower);
 
               return (
                 <Col
