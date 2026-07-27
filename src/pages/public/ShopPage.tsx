@@ -15,6 +15,7 @@ import {
   Modal,
   Row,
   Select,
+  Space,
   Spin,
   Tag,
   Typography,
@@ -40,6 +41,7 @@ const { useBreakpoint } = Grid;
 
 const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
 const HEADER_STICKY_OFFSET = 92;
+const MOBILE_HEADER_STICKY_OFFSET = 67;
 const SEARCH_STICKY_HEIGHT = 76;
 const SIDEBAR_STICKY_TOP = HEADER_STICKY_OFFSET + SEARCH_STICKY_HEIGHT + 12;
 
@@ -316,6 +318,14 @@ export default function ShopPage() {
           description: p.description ?? null,
           unit: String(p.unit),
           price: typeof p.price === "number" ? p.price : Number(p.price),
+          originalPrice:
+            p.originalPrice === null || p.originalPrice === undefined
+              ? undefined
+              : Number(p.originalPrice),
+          discountPercent:
+            p.discountPercent === null || p.discountPercent === undefined
+              ? undefined
+              : Number(p.discountPercent),
           stockQty:
             p.stockQty === null || p.stockQty === undefined
               ? null
@@ -576,7 +586,14 @@ export default function ShopPage() {
 
   return (
     <div className="aca-page">
-      <div className="aca-page__top">
+      <div
+        className="aca-page__top"
+        style={{
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "flex-start" : "flex-end",
+          gap: isMobile ? 4 : 14,
+        }}
+      >
         <Title
           level={2}
           className="aca-displayTitle"
@@ -594,28 +611,23 @@ export default function ShopPage() {
         id="shop-sticky-start"
         style={{
           position: "sticky",
-          top: HEADER_STICKY_OFFSET,
+          top: isMobile ? MOBILE_HEADER_STICKY_OFFSET : HEADER_STICKY_OFFSET,
           zIndex: 40,
-          marginTop: 12,
-          paddingTop: 8,
+          marginTop: isMobile ? 0 : 12,
+          paddingTop: isMobile ? 4 : 8,
           paddingBottom: 10,
           background: "var(--aca-bg)",
         }}
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "220px 280px 1fr",
-            gap: 10,
-            alignItems: "end",
-          }}
-        >
+        <div className="aca-shopControls">
           <div style={{ display: "grid", gap: 6 }}>
             <Text type="secondary">Sort by:</Text>
 
             <Select
               value={sort}
               onChange={setSort}
+              popupMatchSelectWidth={false}
+              classNames={{ popup: { root: "aca-shopSelectPopup" } }}
               style={{ width: "100%" }}
               options={[
                 { value: "featured", label: "Best Sellers" },
@@ -633,6 +645,8 @@ export default function ShopPage() {
               onChange={savePreferredLocation}
               placeholder="Select delivery location"
               loading={loading}
+              popupMatchSelectWidth={false}
+              classNames={{ popup: { root: "aca-shopSelectPopup" } }}
               style={{ width: "100%" }}
               options={dropoffLocations.map((loc) => ({
                 value: loc.id,
@@ -641,7 +655,13 @@ export default function ShopPage() {
             />
           </div>
 
-          <div style={{ display: "grid", gap: 6 }}>
+          <div
+            className="aca-shopControls__search"
+            style={{
+              display: "grid",
+              gap: 6,
+            }}
+          >
             <Text type="secondary">Search:</Text>
 
             <Input
@@ -1134,6 +1154,11 @@ export default function ShopPage() {
                 unitLower === "kg"
                   ? money(p.pricePerKg ?? p.price)
                   : money(p.pricePerPack ?? p.price);
+              const originalDisplayPrice =
+                Number(p.discountPercent || 0) > 0 &&
+                Number(p.originalPrice || 0) > Number(p.price || 0)
+                  ? money(p.originalPrice)
+                  : null;
 
               const displayLabel =
                 unitLower === "kg" ? "Price / kg" : "Price / pack";
@@ -1254,6 +1279,11 @@ export default function ShopPage() {
                         {p.cutType ? (
                           <div className="aca-productBadge">{p.cutType}</div>
                         ) : null}
+                        {originalDisplayPrice ? (
+                          <div className="aca-productDiscountBadge">
+                            {Number(p.discountPercent).toFixed(0)}% OFF
+                          </div>
+                        ) : null}
                       </button>
                     }
                   >
@@ -1268,9 +1298,11 @@ export default function ShopPage() {
                       <div
                         className="aca-priceRow"
                         style={{
-                          flexDirection: isMobile ? "column" : "row",
-                          alignItems: isMobile ? "flex-start" : "baseline",
-                          gap: isMobile ? 2 : 0,
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1fr) auto",
+                          alignItems: "baseline",
+                          columnGap: 8,
+                          position: "relative",
                           margin: isMobile ? "0 0 6px" : undefined,
                         }}
                       >
@@ -1284,10 +1316,35 @@ export default function ShopPage() {
                         <Text
                           strong
                           className="aca-priceVal"
-                          style={{ fontSize: isMobile ? 15 : undefined }}
+                          style={{
+                            fontSize: isMobile ? 15 : undefined,
+                            position: originalDisplayPrice ? "relative" : undefined,
+                            top: originalDisplayPrice ? 8 : undefined,
+                          }}
                         >
                           {displayPrice}
                         </Text>
+
+                        {originalDisplayPrice ? (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: -16,
+                              right: 0,
+                              whiteSpace: "nowrap",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            <Space size={6} wrap>
+                              <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                                Discount {Number(p.discountPercent).toFixed(0)}%
+                              </Tag>
+                              <Text delete type="secondary">
+                                {originalDisplayPrice}
+                              </Text>
+                            </Space>
+                          </div>
+                        ) : null}
                       </div>
 
                       {!isMobile ? (

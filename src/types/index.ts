@@ -6,6 +6,8 @@ export type Product = {
   description?: string | null;
   unit: string;
   price: number;
+  originalPrice?: number;
+  discountPercent?: number;
   stockQty: number | null;
 
   // NEW:

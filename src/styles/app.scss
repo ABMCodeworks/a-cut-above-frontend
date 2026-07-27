@@ -412,6 +412,41 @@ body {
 }
 
 /* Shop layout */
+.aca-shopControls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: end;
+}
+
+.aca-shopSelectPopup {
+  min-width: 220px !important;
+  max-width: calc(100vw - 24px);
+}
+
+.aca-shopSelectPopup .ant-select-item-option-content {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  word-break: break-word;
+}
+
+@media (min-width: 200px) and (max-width: 767px) {
+  .aca-shopControls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  }
+
+  .aca-shopControls__search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 768px) {
+  .aca-shopControls {
+    grid-template-columns: 220px 280px minmax(0, 1fr);
+  }
+}
+
 .aca-shopGrid {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -601,6 +636,21 @@ body {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.18em;
+}
+
+.aca-productDiscountBadge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #237804;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
 }
 
 .aca-productTitle {

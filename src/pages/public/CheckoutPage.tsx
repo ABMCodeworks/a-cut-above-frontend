@@ -13,6 +13,7 @@ import {
   Typography,
   Select,
   Tag,
+  message,
 } from "antd";
 import {
   LockOutlined,
@@ -60,6 +61,17 @@ type StockIssue = {
   requested: number;
   available: number;
   reason: "NOT_FOUND" | "INACTIVE" | "INSUFFICIENT";
+};
+
+type DiscountPreview = {
+  code: string;
+  discountType: "PERCENT" | "FIXED";
+  value: number;
+  subtotal: number;
+  productDiscountTotal: number;
+  codeDiscountTotal: number;
+  discountTotal: number;
+  total: number;
 };
 
 function asInt(v: any, fallback: number) {
@@ -140,6 +152,11 @@ export default function CheckoutPage() {
     {} as Record<string, StockIssue>,
   );
   const [stockChecking, setStockChecking] = useState(false);
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [discountPreview, setDiscountPreview] = useState(
+    null as DiscountPreview | null,
+  );
+  const [discountChecking, setDiscountChecking] = useState(false);
 
   const [phoneValue, setPhoneValue] = useState("+263");
 
@@ -214,6 +231,15 @@ export default function CheckoutPage() {
     return items.reduce((sum, it) => sum + getEstimatedLineTotal(it), 0);
   }, [items]);
 
+  const cartSignature = useMemo(
+    () => items.map((i) => `${i.product.id}:${Number(i.qty || 0)}`).join("|"),
+    [items],
+  );
+
+  const cartTotalAfterCode = discountPreview
+    ? discountPreview.total
+    : cartSubtotal;
+
   const hasEstimatedPricing = useMemo(() => {
     return items.some((it) => isEstimatedWeightItem(it));
   }, [items]);
@@ -265,7 +291,39 @@ export default function CheckoutPage() {
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.map((i) => `${i.product.id}:${Number(i.qty || 0)}`).join("|")]);
+  }, [cartSignature]);
+
+  useEffect(() => {
+    setDiscountPreview(null);
+  }, [cartSignature]);
+
+  async function applyDiscountCode() {
+    const code = discountCodeInput.trim();
+    if (!code) {
+      setDiscountPreview(null);
+      return;
+    }
+    if (!items.length) return;
+
+    setDiscountChecking(true);
+    try {
+      const res = await api.post("/api/public/discount-codes/preview", {
+        code,
+        items: items.map((i) => ({
+          productId: i.product.id,
+          qty: Number(i.qty || 0),
+        })),
+      });
+      setDiscountPreview(res.data as DiscountPreview);
+      setDiscountCodeInput(String(res.data?.code || code).toUpperCase());
+      message.success("Discount code applied");
+    } catch (e: any) {
+      setDiscountPreview(null);
+      message.error(e?.response?.data?.error || "Discount code not valid");
+    } finally {
+      setDiscountChecking(false);
+    }
+  }
 
   function issueUi(issue?: StockIssue | null) {
     if (!issue) return null;
@@ -322,6 +380,7 @@ export default function CheckoutPage() {
         dropoffLocationId,
         personalAddress: isMutare ? personalAddress : "",
         notes: "",
+        discountCode: discountPreview?.code ?? discountCodeInput.trim(),
         items: items.map((i) => ({ productId: i.product.id, qty: i.qty })),
       };
 
@@ -763,8 +822,74 @@ export default function CheckoutPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1 }}>
-                  ${cartSubtotal.toFixed(2)}
+                  ${cartTotalAfterCode.toFixed(2)}
                 </div>
+              </div>
+
+              {discountPreview ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    marginBottom: 12,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(22,119,255,0.25)",
+                    background: "rgba(22,119,255,0.06)",
+                  }}
+                >
+                  <Space style={{ justifyContent: "space-between" }}>
+                    <Text strong>Discount code</Text>
+                    <Tag color="blue">{discountPreview.code}</Tag>
+                  </Space>
+                  <Space style={{ justifyContent: "space-between" }}>
+                    <Text type="secondary">Subtotal before code</Text>
+                    <Text>${cartSubtotal.toFixed(2)}</Text>
+                  </Space>
+                  <Space style={{ justifyContent: "space-between" }}>
+                    <Text type="secondary">Code discount</Text>
+                    <Text strong style={{ color: "var(--aca-forest)" }}>
+                      -${Number(discountPreview.codeDiscountTotal || 0).toFixed(2)}
+                    </Text>
+                  </Space>
+                </div>
+              ) : null}
+
+              <div style={{ marginBottom: 12 }}>
+                <Text strong style={{ display: "block", marginBottom: 6 }}>
+                  Discount code
+                </Text>
+                <Space.Compact style={{ width: "100%" }}>
+                  <Input
+                    value={discountCodeInput}
+                    onChange={(e) => {
+                      setDiscountCodeInput(e.target.value.toUpperCase());
+                      setDiscountPreview(null);
+                    }}
+                    onPressEnter={applyDiscountCode}
+                    placeholder="Enter code"
+                  />
+                  <Button
+                    loading={discountChecking}
+                    onClick={applyDiscountCode}
+                    disabled={!discountCodeInput.trim() || !items.length}
+                  >
+                    Apply
+                  </Button>
+                </Space.Compact>
+                {discountPreview ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => {
+                      setDiscountPreview(null);
+                      setDiscountCodeInput("");
+                    }}
+                    style={{ paddingLeft: 0 }}
+                  >
+                    Remove code
+                  </Button>
+                ) : null}
               </div>
 
               {hasEstimatedPricing ? (

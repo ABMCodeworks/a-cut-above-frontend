@@ -15,6 +15,7 @@ import UsersTab from "../../components/UsersTab";
 import CarcassWeightsTab from "../../components/CarcassWeightsTab";
 import WasteManagementTab from "../../components/WasteManagementTab";
 import ContentTab from "../../components/ContentTab";
+import DiscountCodesTab from "../../components/DiscountCodesTab";
 
 export type AdminCategory = {
   id: string;
@@ -45,6 +46,9 @@ export type AdminProduct = {
   retailPrice: string | number;
   wholesalePrice: string | number;
   costPrice: string | number;
+  discountPercent?: string | number;
+  discountStartsAt?: string | null;
+  discountExpiresAt?: string | null;
   stockQty: number;
   isActive: boolean;
   isForProcessing?: boolean;
@@ -62,6 +66,23 @@ export type AdminProduct = {
   totalPacksWasted?: number;
   totalWeightWastedG?: number;
   totalWasteValue?: string | number;
+};
+
+export type AdminDiscountCode = {
+  id: string;
+  code: string;
+  discountType: "PERCENT" | "FIXED";
+  value: string | number;
+  appliesToAllProducts: boolean;
+  expiresAt: string;
+  isActive: boolean;
+  maxRedemptions?: number | null;
+  redemptionCount: number;
+  createdAt: string;
+  products?: Array<{
+    productId: string;
+    product?: Pick<AdminProduct, "id" | "name" | "categoryId" | "isActive">;
+  }>;
 };
 
 export type AdminOrderItem = {
@@ -176,6 +197,7 @@ export default function AdminDashboardPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [windows, setWindows] = useState<AdminWindow[]>([]);
   const [categories, setCategories] = useState<AdminCategory[]>([]);
+  const [discountCodes, setDiscountCodes] = useState<AdminDiscountCode[]>([]);
   const [report, setReport] = useState<any>(null);
 
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
@@ -207,7 +229,7 @@ export default function AdminDashboardPage() {
       const ok = await ensureAuth();
       if (!ok) return;
 
-      const [pRes, oRes, wRes, cRes, uRes, cwRes] = await Promise.all([
+      const [pRes, oRes, wRes, cRes, uRes, cwRes, dRes] = await Promise.all([
         api.get("/api/admin/products"),
         api.get("/api/admin/orders"),
         api.get("/api/admin/windows"),
@@ -216,6 +238,9 @@ export default function AdminDashboardPage() {
         api
           .get("/api/admin/carcass-weights")
           .catch(() => ({ data: { records: [] } })),
+        api
+          .get("/api/admin/discount-codes")
+          .catch(() => ({ data: { codes: [] } })),
       ]);
 
       setProducts(pRes.data.products || []);
@@ -224,6 +249,7 @@ export default function AdminDashboardPage() {
       setCategories(cRes.data.categories || []);
       setUsers(uRes.data.users || []);
       setCarcassWeights(cwRes.data.records || []);
+      setDiscountCodes(dRes.data.codes || []);
     } catch (e: any) {
       message.error("Failed to load admin data");
     } finally {
@@ -415,6 +441,18 @@ export default function AdminDashboardPage() {
                     loading={loading}
                     products={products}
                     categories={categories}
+                    onReload={loadAll}
+                  />
+                ),
+              },
+              {
+                key: "discounts",
+                label: "Discounts",
+                children: (
+                  <DiscountCodesTab
+                    loading={loading}
+                    products={products}
+                    codes={discountCodes}
                     onReload={loadAll}
                   />
                 ),
