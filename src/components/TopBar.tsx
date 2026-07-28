@@ -1,7 +1,7 @@
 // src/components/TopBar.tsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "../lib/router";
 import {
   Badge,
   Button,

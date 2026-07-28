@@ -34,7 +34,7 @@ import {
   SettingOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import * as XLSX from "xlsx";
+import writeXlsxFile from "write-excel-file/browser";
 
 import { api, API_BASE } from "../api/client";
 import type {
@@ -1336,7 +1336,7 @@ export default function OrdersTab({
     }
   }
 
-  function exportPackingList() {
+  async function exportPackingList() {
     const ordersToExport = displayOrders.filter((o) => {
       if (String(o.status || "").toUpperCase() === "DELIVERED") {
         return false;
@@ -1419,19 +1419,14 @@ export default function OrdersTab({
     ];
 
     const aoa = [headers, ...rows, [], totalsRow];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    (ws as any)["!cols"] = [
-      { wch: 22 },
-      { wch: 16 },
-      { wch: 18 },
+    const columns = [
+      { width: 22 },
+      { width: 16 },
+      { width: 18 },
       ...productNames.map((p) => ({
-        wch: Math.max(12, Math.min(32, p.length + 2)),
+        width: Math.max(12, Math.min(32, p.length + 2)),
       })),
     ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Packing List");
 
     const label = targetSchedule
       ? `${targetSchedule.dropoffLocation.name}_cutoff-${fmtDate(targetSchedule.cutoffDate)}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
@@ -1439,13 +1434,16 @@ export default function OrdersTab({
         .replace(/,/g, "")
       : `all_${dayjs().format("YYYY-MM-DD")}`;
 
-    XLSX.writeFile(wb, `packing-list_${label}.xlsx`);
+    await writeXlsxFile(aoa, {
+      sheet: "Packing List",
+      columns,
+    }).toFile(`packing-list_${label}.xlsx`);
 
     message.success(`Exported ${ordersToExport.length} orders`);
     setPackingOpen(false);
   }
 
-  function exportDeliveryList() {
+  async function exportDeliveryList() {
     const ordersToExport = displayOrders.filter((o) => {
       if (selectedDeliveryRunWindowId) {
         if (String((o as any).windowId || "") !== selectedDeliveryRunWindowId) {
@@ -1571,22 +1569,17 @@ export default function OrdersTab({
       grandTotal,
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], totalsRow]);
-
-    (ws as any)["!cols"] = [
-      { wch: 24 },
-      { wch: 16 },
-      { wch: 32 },
-      { wch: 18 },
-      { wch: 18 },
+    const columns = [
+      { width: 24 },
+      { width: 16 },
+      { width: 32 },
+      { width: 18 },
+      { width: 18 },
       ...productNames.map((productName) => ({
-        wch: Math.max(12, Math.min(32, productName.length + 2)),
+        width: Math.max(12, Math.min(32, productName.length + 2)),
       })),
-      { wch: 14 },
+      { width: 14 },
     ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Delivery List");
 
     const label = targetSchedule
       ? `${targetSchedule.dropoffLocation.name}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
@@ -1594,7 +1587,10 @@ export default function OrdersTab({
           .replace(/,/g, "")
       : `delivery-list_${dayjs().format("YYYY-MM-DD")}`;
 
-    XLSX.writeFile(wb, `delivery-list_${label}.xlsx`);
+    await writeXlsxFile([headers, ...rows, [], totalsRow], {
+      sheet: "Delivery List",
+      columns,
+    }).toFile(`delivery-list_${label}.xlsx`);
     message.success(`Exported ${ordersToExport.length} active orders`);
   }
 

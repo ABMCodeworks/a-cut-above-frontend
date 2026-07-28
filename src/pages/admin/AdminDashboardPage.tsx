@@ -1,7 +1,7 @@
 // src/pages/admin/AdminDashboardPage.tsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Tabs, message } from "antd";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "../../lib/router";
 import { api } from "../../api/client";
 
 import AdminShell from "../../components/AdminShell";

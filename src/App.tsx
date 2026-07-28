@@ -1,7 +1,7 @@
 // src/App.tsx
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "./lib/router";
 import { Layout, message } from "antd";
 import { CartProvider } from "./context/CartContext";
 import { api } from "./api/client";

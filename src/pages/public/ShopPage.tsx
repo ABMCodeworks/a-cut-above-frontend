@@ -33,7 +33,7 @@ import {
 import { api, RAILWAY_BASE } from "../../api/client";
 import type { Product } from "../../types";
 import { useCart } from "../../context/CartContext";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "../../lib/router";
 import { IconPreview } from "../../components/iconCatalog";
 
 const { Title, Text } = Typography;

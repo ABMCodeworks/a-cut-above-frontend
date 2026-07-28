@@ -1,7 +1,7 @@
 // src/pages/admin/AdminLoginPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, Space, Typography, message } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../lib/router";
 import { api, API_BASE } from "../../api/client";
 
 const { Title, Text } = Typography;

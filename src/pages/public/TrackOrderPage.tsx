@@ -9,7 +9,7 @@ import {
   message,
   Alert,
 } from "antd";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "../../lib/router";
 import { api } from "../../api/client";
 import "../../styles/app.scss";
 import type { TrackedOrder } from "../../types";

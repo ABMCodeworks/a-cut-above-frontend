@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "../../lib/router";
 import { Button, Card, Input, Space, Typography, message } from "antd";
 
 const { Title, Text } = Typography;
