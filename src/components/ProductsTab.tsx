@@ -162,7 +162,7 @@ export default function ProductsTab({
     const query = search.trim().toLowerCase();
     return products.filter((p) => {
       if (showArchived ? p.isActive : !p.isActive) return false;
-      if (!showProcessingProducts && p.isForProcessing) return false;
+      if (showProcessingProducts && !p.isForProcessing) return false;
       if (!query) return true;
       return (
         p.name.toLowerCase().includes(query) ||
@@ -761,7 +761,7 @@ export default function ProductsTab({
             <Switch checked={groupByCategory} onChange={setGroupByCategory} />
           </Space>
           <Space>
-            <Text type="secondary">Show processing products</Text>
+            <Text type="secondary">Processing products only</Text>
             <Switch
               checked={showProcessingProducts}
               onChange={setShowProcessingProducts}
