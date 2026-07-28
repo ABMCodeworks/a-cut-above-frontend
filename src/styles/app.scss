@@ -934,3 +934,19 @@ body {
   font-weight: 800;
   margin-top: 4px;
 }
+
+/* Processing yield should balance to almost zero loss. */
+.aca-processing-loss-row > td {
+  background: #fff1f0 !important;
+  border-top: 1px solid #ffccc7 !important;
+  border-bottom: 1px solid #ffccc7 !important;
+}
+
+.aca-processing-loss-row:hover > td {
+  background: #ffe7e5 !important;
+}
+
+.aca-processing-loss-card {
+  background: #fff1f0 !important;
+  border-color: #ff7875 !important;
+}

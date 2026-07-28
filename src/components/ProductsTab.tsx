@@ -131,6 +131,7 @@ export default function ProductsTab({
 
   const [groupByCategory, setGroupByCategory] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [showProcessingProducts, setShowProcessingProducts] = useState(false);
   const [search, setSearch] = useState("");
   const [pendingImageFile, setPendingImageFile] = useState(null as File | null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState(
@@ -161,6 +162,7 @@ export default function ProductsTab({
     const query = search.trim().toLowerCase();
     return products.filter((p) => {
       if (showArchived ? p.isActive : !p.isActive) return false;
+      if (!showProcessingProducts && p.isForProcessing) return false;
       if (!query) return true;
       return (
         p.name.toLowerCase().includes(query) ||
@@ -169,7 +171,7 @@ export default function ProductsTab({
         (p.category?.name || "").toLowerCase().includes(query)
       );
     });
-  }, [products, showArchived, search]);
+  }, [products, showArchived, showProcessingProducts, search]);
 
   const archivedCount = useMemo(
     () => products.filter((p) => !p.isActive).length,
@@ -680,7 +682,12 @@ export default function ProductsTab({
       key: "stockQty",
       width: 90,
       render: (_: any, p: AdminProduct) =>
-        p.isForProcessing ? <Text type="secondary">Processing only</Text> : p.stockQty,
+        p.isForProcessing ? (
+          <div style={{ display: "grid", gap: 2 }}>
+            <Text>{Number(p.processingAvailableWeightKg || 0).toFixed(2)} kg</Text>
+            <Text type="secondary">available to process</Text>
+          </div>
+        ) : p.stockQty,
     },
     {
       title: "Category",
@@ -752,6 +759,13 @@ export default function ProductsTab({
           <Space>
             <Text type="secondary">Group by category</Text>
             <Switch checked={groupByCategory} onChange={setGroupByCategory} />
+          </Space>
+          <Space>
+            <Text type="secondary">Show processing products</Text>
+            <Switch
+              checked={showProcessingProducts}
+              onChange={setShowProcessingProducts}
+            />
           </Space>
           <Button onClick={() => setShowArchived((v) => !v)}>
             {showArchived

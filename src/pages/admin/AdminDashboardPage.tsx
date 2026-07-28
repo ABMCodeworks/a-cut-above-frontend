@@ -66,6 +66,7 @@ export type AdminProduct = {
   totalPacksWasted?: number;
   totalWeightWastedG?: number;
   totalWasteValue?: string | number;
+  processingAvailableWeightKg?: string | number;
 };
 
 export type AdminDiscountCode = {
