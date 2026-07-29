@@ -950,3 +950,18 @@ body {
   background: #fff1f0 !important;
   border-color: #ff7875 !important;
 }
+
+.aca-carcass-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+
+  .ant-btn {
+    width: 100%;
+  }
+
+  .aca-carcass-actions__primary {
+    grid-column: 1 / -1;
+  }
+}

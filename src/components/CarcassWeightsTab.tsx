@@ -58,7 +58,11 @@ type Output = {
   totalWeightKg: number | string;
   packetCount: number;
   product?: ProductOption;
-  downstreamBatches?: Array<{ id: string; inputWeightKg: number | string }>;
+  downstreamBatches?: Array<{
+    id: string;
+    inputWeightKg: number | string;
+    outputs?: Array<{ totalWeightKg: number | string }>;
+  }>;
 };
 
 type ProcessingBatch = {
@@ -194,16 +198,11 @@ function pctText(value: number | null) {
   return value === null ? "—" : `${Math.max(0, value).toFixed(1)}%`;
 }
 
-function processingDifferenceKg(batch: ProcessingBatch) {
-  const outputWeight = (batch.outputs || []).reduce(
+function processingOutputWeight(batch: ProcessingBatch) {
+  return (batch.outputs || []).reduce(
     (total, output) => total + n(output.totalWeightKg),
     0,
   );
-  return Math.abs(n(batch.inputWeightKg) - outputWeight);
-}
-
-function hasProcessingDifference(batch: ProcessingBatch) {
-  return processingDifferenceKg(batch) > 0.005;
 }
 
 function kindOf(category?: { key?: string | null; name?: string | null } | null): AnimalKind {
@@ -302,7 +301,17 @@ export default function CarcassWeightsTab({
       : (["WHOLE_CARCASS"] as SourcePart[]);
 
   function processedFor(record: CarcassBatchRecord, part: SourcePart) {
-    return (record.processingBatches || []).filter((batch) => batch.sourcePart === part).reduce((total, batch) => total + n(batch.inputWeightKg), 0);
+    return (record.processingBatches || [])
+      .filter((batch) => batch.sourcePart === part)
+      .reduce(
+        (total, batch) =>
+          total +
+          (batch.outputs || []).reduce(
+            (outputTotal, output) => outputTotal + n(output.totalWeightKg),
+            0,
+          ),
+        0,
+      );
   }
 
   function availableFor(record: CarcassBatchRecord, part: SourcePart) {
@@ -315,7 +324,13 @@ export default function CarcassWeightsTab({
       0,
       n(output.totalWeightKg) -
         (output.downstreamBatches || []).reduce(
-          (total, batch) => total + n(batch.inputWeightKg),
+          (total, batch) =>
+            total +
+            (batch.outputs || []).reduce(
+              (batchTotal, downstreamOutput) =>
+                batchTotal + n(downstreamOutput.totalWeightKg),
+              0,
+            ),
           0,
         ),
     );
@@ -463,7 +478,13 @@ export default function CarcassWeightsTab({
       setTarget(record);
       setProcessingSourceOutput(null);
       const kind = kindOf(record.meatCategory);
-      const firstPart: SourcePart = kind === "beef" ? "HINDQUARTER_1" : kind === "chicken" ? "WHOLE_BATCH" : "WHOLE_CARCASS";
+      const parts: SourcePart[] = kind === "beef"
+        ? ["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"]
+        : kind === "chicken"
+          ? ["WHOLE_BATCH"]
+          : ["WHOLE_CARCASS"];
+      const firstPart =
+        parts.find((part) => availableFor(record, part) > 0.005) || parts[0];
       processingForm.resetFields();
       processingForm.setFieldsValue({
         sourcePart: firstPart,
@@ -588,11 +609,49 @@ export default function CarcassWeightsTab({
   }
 
   function overallProcessingLoss(record: CarcassBatchRecord) {
-    const batches = processingHistory(record);
-    if (!batches.length) return null;
-    const inputs = batches.reduce((total, batch) => total + n(batch.inputWeightKg), 0);
-    const outputs = batches.reduce((total, batch) => total + (batch.outputs || []).reduce((subtotal, output) => subtotal + n(output.totalWeightKg), 0), 0);
-    return pct(inputs, outputs);
+    const directBatches = (record.processingBatches || []).filter(
+      (batch) => batch.sourcePart,
+    );
+    if (!directBatches.length) return null;
+    const usedParts = [...new Set(directBatches.map((batch) => batch.sourcePart!))];
+    const sourceTotal = usedParts.reduce(
+      (total, part) => total + sourceWeight(record, part),
+      0,
+    );
+    const outputTotal = directBatches.reduce(
+      (total, batch) =>
+        total +
+        (batch.outputs || []).reduce(
+          (batchTotal, output) => batchTotal + n(output.totalWeightKg),
+          0,
+        ),
+      0,
+    );
+    return pct(sourceTotal, outputTotal);
+  }
+
+  function cumulativeProcessingLoss(
+    record: CarcassBatchRecord,
+    batch: ProcessingBatch,
+  ) {
+    const history = processingHistory(record);
+    if (batch.sourcePart) {
+      return pct(
+        sourceWeight(record, batch.sourcePart),
+        history
+          .filter((item) => item.sourcePart === batch.sourcePart)
+          .reduce((total, item) => total + processingOutputWeight(item), 0),
+      );
+    }
+    if (batch.sourceOutputId && batch.sourceOutput) {
+      return pct(
+        batch.sourceOutput.totalWeightKg,
+        history
+          .filter((item) => item.sourceOutputId === batch.sourceOutputId)
+          .reduce((total, item) => total + processingOutputWeight(item), 0),
+      );
+    }
+    return pct(batch.inputWeightKg, processingOutputWeight(batch));
   }
 
   const columns = useMemo(() => [
@@ -614,21 +673,21 @@ export default function CarcassWeightsTab({
     { title: "Processing loss", key: "loss", width: 130, render: (_: unknown, record: CarcassBatchRecord) => {
       const loss = overallProcessingLoss(record);
       if (loss === null) return <Text type="secondary">—</Text>;
-      const differs = processingHistory(record).some(hasProcessingDifference);
+      const differs = Math.abs(loss) > 0.01;
       return <Tag color={differs ? "red" : "green"}>{pctText(loss)}</Tag>;
     } },
     {
       title: "",
       key: "actions",
-      width: 420,
+      width: 330,
       render: (_: unknown, record: CarcassBatchRecord) => canManage ? (
-        <Space wrap>
+        <div className="aca-carcass-actions">
+          <Button className="aca-carcass-actions__primary" type="primary" onClick={() => openProcessing(record)}>Process Products</Button>
           {(kindOf(record.meatCategory) === "beef" || kindOf(record.meatCategory) === "lamb" || kindOf(record.meatCategory) === "carcass") ? <Button onClick={() => openDry(record)}>Dry Weights</Button> : null}
-          <Button type="primary" onClick={() => openProcessing(record)}>Process Products</Button>
           {kindOf(record.meatCategory) === "beef" ? <Button onClick={() => openSale(record)}>Sell Whole Quarter</Button> : null}
           <Button onClick={() => openEdit(record)}>Edit</Button>
           <Popconfirm title="Delete this record?" onConfirm={() => deleteRecord(record.id)} okButtonProps={{ danger: true }}><Button danger>Delete</Button></Popconfirm>
-        </Space>
+        </div>
       ) : null,
     },
   ], [canManage, records]);
@@ -641,7 +700,7 @@ export default function CarcassWeightsTab({
         dataSource={[...(records || [])].sort((a, b) => dayjs(b.weighedAt).valueOf() - dayjs(a.weighedAt).valueOf())}
         columns={columns as any}
         rowClassName={(record) =>
-          processingHistory(record).some(hasProcessingDifference)
+          Math.abs(overallProcessingLoss(record) || 0) > 0.01
             ? "aca-processing-loss-row"
             : ""
         }
@@ -669,12 +728,15 @@ export default function CarcassWeightsTab({
                   { title: "Notes", dataIndex: "notes", render: (value: string) => value || "—" },
                 ]} /></div> : null}
 
-                <div><Text strong>Processing History</Text><Table size="small" pagination={false} rowKey="id" dataSource={processingHistory(record)} rowClassName={(batch: ProcessingBatch) => hasProcessingDifference(batch) ? "aca-processing-loss-row" : ""} locale={{ emptyText: "No products processed yet" }} columns={[
+                <div><Text strong>Processing History</Text><Table size="small" pagination={false} rowKey="id" dataSource={processingHistory(record)} rowClassName={(batch: ProcessingBatch) => Math.abs(cumulativeProcessingLoss(record, batch) || 0) > 0.01 ? "aca-processing-loss-row" : ""} locale={{ emptyText: "No products processed yet" }} columns={[
                   { title: "Source", render: (_: unknown, batch: ProcessingBatch) => batch.sourceOutput?.product?.name || (batch.sourcePart ? partLabels[batch.sourcePart] : "Legacy source") },
                   { title: "Date", dataIndex: "processedAt", render: (value: string) => dayjs(value).format("D MMM YYYY") },
                   { title: "Source weight", dataIndex: "inputWeightKg", render: kg },
                   { title: "Products", render: (_: unknown, batch: ProcessingBatch) => <Space wrap>{(batch.outputs || []).map((output) => output.product?.isForProcessing ? <Space key={output.id} size={4}><Tag color="orange">{output.product?.name}: {kg(availableOutputWeight(output))} of {kg(output.totalWeightKg)} available</Tag>{canManage && availableOutputWeight(output) > 0.005 ? <Button size="small" type="primary" onClick={() => openProcessFurther(record, output)}>Process Further</Button> : null}</Space> : <Tag key={output.id}>{output.product?.name}: {output.packetCount} packs / {kg(output.totalWeightKg)}</Tag>)}</Space> },
-                  { title: "% loss", render: (_: unknown, batch: ProcessingBatch) => <Tag color={hasProcessingDifference(batch) ? "red" : "green"}>{pctText(pct(batch.inputWeightKg, (batch.outputs || []).reduce((total, output) => total + n(output.totalWeightKg), 0)))}</Tag> },
+                  { title: "% loss", render: (_: unknown, batch: ProcessingBatch) => {
+                    const loss = cumulativeProcessingLoss(record, batch);
+                    return <Tag color={Math.abs(loss || 0) > 0.01 ? "red" : "green"}>{pctText(loss)}</Tag>;
+                  } },
                   { title: "", render: (_: unknown, batch: ProcessingBatch) => canManage ? <Popconfirm title="Reverse processing and remove its stock?" onConfirm={() => reverseProcessing(batch.id)}><Button danger size="small">Reverse</Button></Popconfirm> : null },
                 ]} /></div>
 
@@ -751,9 +813,9 @@ export default function CarcassWeightsTab({
       <Modal title={`${processingSourceOutput ? `Process ${processingSourceOutput.product?.name || "Processing Product"} Further` : "Process Products"} — ${target?.animalId || ""}`} open={processingOpen} onCancel={() => { setProcessingOpen(false); setProcessingSourceOutput(null); }} onOk={saveProcessing} confirmLoading={saving} okText="Process and Add Stock" width={900}>
         <Form form={processingForm} layout="vertical">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-            {processingSourceOutput ? <Card size="small"><Text type="secondary">Processing product source</Text><div><b>{processingSourceOutput.product?.name}</b></div><div>{kg(availableOutputWeight(processingSourceOutput))} available</div></Card> : <Form.Item name="sourcePart" label={target && kindOf(target.meatCategory) === "beef" ? "Quarter Cut From" : "Processing Source"} rules={[{ required: true }]}><Select options={target ? sourceOptions.map((part) => ({ value: part, label: `${partLabels[part]} — ${kg(sourceWeight(target, part))}${availableFor(target, part) < sourceWeight(target, part) ? ` (${kg(availableFor(target, part))} available)` : ""}`, disabled: availableFor(target, part) <= 0.005 })) : []} onChange={(part: SourcePart) => { if (target) processingForm.setFieldValue("inputWeightKg", availableFor(target, part)); }} /></Form.Item>}
+            {processingSourceOutput ? <Card size="small"><Text type="secondary">Processing product source</Text><div><b>{processingSourceOutput.product?.name}</b></div><div>{kg(availableOutputWeight(processingSourceOutput))} available</div></Card> : <Form.Item name="sourcePart" label={target && kindOf(target.meatCategory) === "beef" ? "Quarter Cut From" : "Processing Source"} rules={[{ required: true }]}><Select options={target ? sourceOptions.map((part) => { const kind = kindOf(target.meatCategory); const basis = kind === "beef" || kind === "lamb" || kind === "carcass" ? "dry weight" : "starting weight"; return { value: part, label: `${partLabels[part]} — ${kg(availableFor(target, part))} remaining from ${kg(sourceWeight(target, part))} ${basis}`, disabled: availableFor(target, part) <= 0.005 }; }) : []} onChange={(part: SourcePart) => { if (target) processingForm.setFieldValue("inputWeightKg", availableFor(target, part)); }} /></Form.Item>}
             <Form.Item name="processedAt" label="Processing Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item name="inputWeightKg" label="Source Weight Used (kg)" rules={[{ required: true }]}><InputNumber min={0.01} max={processingSourceOutput ? availableOutputWeight(processingSourceOutput) : target && selectedSource ? availableFor(target, selectedSource) : undefined} step={0.1} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="inputWeightKg" label={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Remaining Quarter Dry Weight (kg)" : "Source Weight Used (kg)"} rules={[{ required: true }]} extra={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Locked to the selected quarter dry weight minus products already processed from it." : undefined}><InputNumber min={0.01} max={processingSourceOutput ? availableOutputWeight(processingSourceOutput) : target && selectedSource ? availableFor(target, selectedSource) : undefined} step={0.1} disabled={!processingSourceOutput} style={{ width: "100%" }} /></Form.Item>
           </div>
           <Divider orientation="left">Products Cut From This Source</Divider>
           <Form.List name="outputs">{(fields, { add, remove }) => <div style={{ display: "grid", gap: 10 }}>
