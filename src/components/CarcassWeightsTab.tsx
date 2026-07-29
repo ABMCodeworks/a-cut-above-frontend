@@ -58,6 +58,14 @@ type Output = {
   totalWeightKg: number | string;
   packetCount: number;
   product?: ProductOption;
+  wholeSale?: {
+    id: string;
+    weightKg: number | string;
+    soldAt: string;
+    buyer?: string | null;
+    salePrice?: number | string | null;
+    notes?: string | null;
+  } | null;
   downstreamBatches?: Array<{
     id: string;
     inputWeightKg: number | string;
@@ -179,6 +187,8 @@ type SaleForm = {
   notes?: string;
 };
 
+type ProcessingOutputSaleForm = Omit<SaleForm, "sourcePart">;
+
 function n(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -261,13 +271,16 @@ export default function CarcassWeightsTab({
   const [dryForm] = Form.useForm<DryForm>();
   const [processingForm] = Form.useForm<ProcessingForm>();
   const [saleForm] = Form.useForm<SaleForm>();
+  const [processingOutputSaleForm] = Form.useForm<ProcessingOutputSaleForm>();
   const [wetOpen, setWetOpen] = useState(false);
   const [dryOpen, setDryOpen] = useState(false);
   const [processingOpen, setProcessingOpen] = useState(false);
   const [saleOpen, setSaleOpen] = useState(false);
+  const [processingOutputSaleOpen, setProcessingOutputSaleOpen] = useState(false);
   const [editing, setEditing] = useState<CarcassBatchRecord | null>(null);
   const [target, setTarget] = useState<CarcassBatchRecord | null>(null);
   const [processingSourceOutput, setProcessingSourceOutput] = useState<Output | null>(null);
+  const [processingOutputForSale, setProcessingOutputForSale] = useState<Output | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -323,6 +336,7 @@ export default function CarcassWeightsTab({
     return Math.max(
       0,
       n(output.totalWeightKg) -
+        n(output.wholeSale?.weightKg) -
         (output.downstreamBatches || []).reduce(
           (total, batch) =>
             total +
@@ -573,6 +587,40 @@ export default function CarcassWeightsTab({
     }
   }
 
+  function openProcessingOutputSale(record: CarcassBatchRecord, output: Output) {
+    setTarget(record);
+    setProcessingOutputForSale(output);
+    processingOutputSaleForm.resetFields();
+    processingOutputSaleForm.setFieldsValue({
+      soldAt: dayjs(),
+      buyer: "",
+      salePrice: null,
+      notes: "",
+    });
+    setProcessingOutputSaleOpen(true);
+  }
+
+  async function saveProcessingOutputSale() {
+    if (!processingOutputForSale) return;
+    const values = await processingOutputSaleForm.validateFields();
+    setSaving(true);
+    try {
+      await api.post("/api/admin/carcass-weights/processing-output-sale", {
+        ...values,
+        sourceOutputId: processingOutputForSale.id,
+        soldAt: values.soldAt.toISOString(),
+      });
+      message.success("Whole processing product sale recorded without adding it to shop stock");
+      setProcessingOutputSaleOpen(false);
+      setProcessingOutputForSale(null);
+      onReload();
+    } catch (error: any) {
+      message.error(error?.response?.data?.error || "Could not record whole-product sale");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function reverseProcessing(id: string) {
     try {
       await api.delete(`/api/admin/carcass-weights/process/${id}`);
@@ -590,6 +638,16 @@ export default function CarcassWeightsTab({
       onReload();
     } catch (error: any) {
       message.error(error?.response?.data?.error || "Could not remove sale");
+    }
+  }
+
+  async function reverseProcessingOutputSale(id: string) {
+    try {
+      await api.delete(`/api/admin/carcass-weights/processing-output-sale/${id}`);
+      message.success("Whole processing product sale removed");
+      onReload();
+    } catch (error: any) {
+      message.error(error?.response?.data?.error || "Could not remove whole-product sale");
     }
   }
 
@@ -648,7 +706,8 @@ export default function CarcassWeightsTab({
         batch.sourceOutput.totalWeightKg,
         history
           .filter((item) => item.sourceOutputId === batch.sourceOutputId)
-          .reduce((total, item) => total + processingOutputWeight(item), 0),
+          .reduce((total, item) => total + processingOutputWeight(item), 0) +
+          n(batch.sourceOutput.wholeSale?.weightKg),
       );
     }
     return pct(batch.inputWeightKg, processingOutputWeight(batch));
@@ -732,7 +791,10 @@ export default function CarcassWeightsTab({
                   { title: "Source", render: (_: unknown, batch: ProcessingBatch) => batch.sourceOutput?.product?.name || (batch.sourcePart ? partLabels[batch.sourcePart] : "Legacy source") },
                   { title: "Date", dataIndex: "processedAt", render: (value: string) => dayjs(value).format("D MMM YYYY") },
                   { title: "Source weight", dataIndex: "inputWeightKg", render: kg },
-                  { title: "Products", render: (_: unknown, batch: ProcessingBatch) => <Space wrap>{(batch.outputs || []).map((output) => output.product?.isForProcessing ? <Space key={output.id} size={4}><Tag color="orange">{output.product?.name}: {kg(availableOutputWeight(output))} of {kg(output.totalWeightKg)} available</Tag>{canManage && availableOutputWeight(output) > 0.005 ? <Button size="small" type="primary" onClick={() => openProcessFurther(record, output)}>Process Further</Button> : null}</Space> : <Tag key={output.id}>{output.product?.name}: {output.packetCount} packs / {kg(output.totalWeightKg)}</Tag>)}</Space> },
+                  { title: "Products", render: (_: unknown, batch: ProcessingBatch) => <Space wrap align="start">{(batch.outputs || []).map((output) => output.product?.isForProcessing ? <div className="aca-processing-output" key={output.id}>
+                    <Tag color={output.wholeSale ? "green" : "orange"}>{output.product?.name}: {output.wholeSale ? `${kg(output.wholeSale.weightKg)} sold whole` : `${kg(availableOutputWeight(output))} of ${kg(output.totalWeightKg)} available`}</Tag>
+                    {output.wholeSale ? <Space size={4} wrap><Text type="secondary">Sold {dayjs(output.wholeSale.soldAt).format("D MMM YYYY")}{output.wholeSale.buyer ? ` to ${output.wholeSale.buyer}` : ""}</Text>{canManage ? <Popconfirm title="Remove this whole-product sale?" onConfirm={() => reverseProcessingOutputSale(output.wholeSale!.id)}><Button size="small" danger>Remove Sale</Button></Popconfirm> : null}</Space> : canManage && availableOutputWeight(output) > 0.005 ? <Space size={4} wrap><Button size="small" type="primary" onClick={() => openProcessFurther(record, output)}>Process Further</Button><Button size="small" onClick={() => openProcessingOutputSale(record, output)}>Sell Whole</Button></Space> : null}
+                  </div> : <Tag key={output.id}>{output.product?.name}: {output.packetCount} packs / {kg(output.totalWeightKg)}</Tag>)}</Space> },
                   { title: "% loss", render: (_: unknown, batch: ProcessingBatch) => {
                     const loss = cumulativeProcessingLoss(record, batch);
                     return <Tag color={Math.abs(loss || 0) > 0.01 ? "red" : "green"}>{pctText(loss)}</Tag>;
@@ -843,6 +905,31 @@ export default function CarcassWeightsTab({
           <Form.Item name="salePrice" label="Sale Price ($)"><InputNumber min={0} step={0.01} style={{ width: "100%" }} /></Form.Item>
           <Form.Item name="notes" label="Notes"><Input.TextArea rows={2} /></Form.Item>
           <Text type="secondary">This records a direct whole-quarter sale. It does not create a shop product or change shop stock.</Text>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Sell Whole ${processingOutputForSale?.product?.name || "Processing Product"} — ${target?.animalId || ""}`}
+        open={processingOutputSaleOpen}
+        onCancel={() => {
+          setProcessingOutputSaleOpen(false);
+          setProcessingOutputForSale(null);
+        }}
+        onOk={saveProcessingOutputSale}
+        confirmLoading={saving}
+        okText="Record Sale"
+        width={650}
+      >
+        <Form form={processingOutputSaleForm} layout="vertical">
+          <Card size="small" style={{ marginBottom: 12 }}>
+            <Text type="secondary">Whole remaining product weight</Text>
+            <div><b>{processingOutputForSale ? kg(availableOutputWeight(processingOutputForSale)) : "—"}</b></div>
+          </Card>
+          <Form.Item name="soldAt" label="Sale Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+          <Form.Item name="buyer" label="Buyer"><Input /></Form.Item>
+          <Form.Item name="salePrice" label="Sale Price ($)"><InputNumber min={0} step={0.01} style={{ width: "100%" }} /></Form.Item>
+          <Form.Item name="notes" label="Notes"><Input.TextArea rows={2} /></Form.Item>
+          <Text type="secondary">This sells the product’s entire remaining weight directly. It is not added to shop stock and cannot be processed further unless the sale is removed.</Text>
         </Form>
       </Modal>
     </Card>
