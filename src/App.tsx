@@ -94,7 +94,7 @@ export default function App() {
           }}
         >
           <Routes>
-            <Route path="/" element={<AboutPage />} />
+            <Route path="/" element={<ShopPage />} />
             <Route path="/about" element={<AboutPage />} />
 
             <Route path="/products" element={<ShopPage />} />

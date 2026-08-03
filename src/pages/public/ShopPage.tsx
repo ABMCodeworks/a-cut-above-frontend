@@ -29,6 +29,7 @@ import {
   DeleteOutlined,
   ShoppingCartOutlined,
   ArrowUpOutlined,
+  CheckCircleFilled,
 } from "@ant-design/icons";
 import { api, RAILWAY_BASE } from "../../api/client";
 import type { Product } from "../../types";
@@ -176,6 +177,11 @@ export default function ShopPage() {
 
   const isMobile = !screens.md;
   const showSummary = !!screens.lg;
+  const [pricingTier, setPricingTier] = useState<"RETAIL" | "WHOLESALE">(
+    () =>
+      localStorage.getItem("aca_wholesale_pin") ? "WHOLESALE" : "RETAIL",
+  );
+  const isWholesale = pricingTier === "WHOLESALE";
 
   const [cartOpen, setCartOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -195,6 +201,8 @@ export default function ShopPage() {
   );
   const [locationPromptOpen, setLocationPromptOpen] = useState(false);
   const didCheckPromptRef = useRef(false);
+  const cartConfirmationTimerRef = useRef<number | null>(null);
+  const [cartConfirmation, setCartConfirmation] = useState<string | null>(null);
 
   const [qtyMap, setQtyMap] = useState({} as Record<string, number>);
   const [activeCat, setActiveCat] = useState("all");
@@ -229,6 +237,15 @@ export default function ShopPage() {
 
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (cartConfirmationTimerRef.current !== null) {
+        window.clearTimeout(cartConfirmationTimerRef.current);
+      }
+    },
+    [],
+  );
 
   function setUrlQuery(next: string) {
     const params = new URLSearchParams(location.search);
@@ -268,6 +285,11 @@ export default function ShopPage() {
       ]);
 
       setWindowState(wRes.data);
+      setPricingTier(
+        String(pRes.data?.pricingTier || "RETAIL").toUpperCase() === "WHOLESALE"
+          ? "WHOLESALE"
+          : "RETAIL",
+      );
 
       const rawLocations = (lRes.data?.locations || lRes.data || []) as any[];
 
@@ -292,21 +314,12 @@ export default function ShopPage() {
 
       setDropoffLocations(activeLocations);
 
-      const savedLocationId = localStorage.getItem(PREFERRED_LOCATION_KEY);
-
       setSelectedLocationId((prev) => {
         if (prev && activeLocations.some((loc) => loc.id === prev)) {
           return prev;
         }
 
-        if (
-          savedLocationId &&
-          activeLocations.some((loc) => loc.id === savedLocationId)
-        ) {
-          return savedLocationId;
-        }
-
-        return activeLocations[0]?.id ?? null;
+        return null;
       });
 
       const raw = (pRes.data?.products || []) as any[];
@@ -364,20 +377,18 @@ export default function ShopPage() {
   }, []);
 
   useEffect(() => {
+    if (isWholesale) {
+      setLocationPromptOpen(false);
+      return;
+    }
+
     if (didCheckPromptRef.current) return;
     if (!dropoffLocations.length) return;
 
     didCheckPromptRef.current = true;
 
-    const savedLocationId = localStorage.getItem(PREFERRED_LOCATION_KEY);
-    const hasValidSaved =
-      !!savedLocationId &&
-      dropoffLocations.some((loc) => loc.id === savedLocationId);
-
-    if (!hasValidSaved) {
-      setLocationPromptOpen(true);
-    }
-  }, [dropoffLocations]);
+    setLocationPromptOpen(true);
+  }, [dropoffLocations, isWholesale]);
 
   const selectedLocation = useMemo(
     () =>
@@ -388,10 +399,11 @@ export default function ShopPage() {
   );
 
   const locationUnavailable = useMemo(() => {
+    if (isWholesale) return false;
     if (!selectedLocation) return true;
 
     return !selectedLocation.nextSchedule?.deliveryDate;
-  }, [selectedLocation]);
+  }, [isWholesale, selectedLocation]);
 
   const locationUnavailableMessage =
     "Unfortunately there are no deliveries to that location at the current moment, please check back in moment as the issue should be resolved shortly.";
@@ -494,23 +506,36 @@ export default function ShopPage() {
 
   const cartTotal = useMemo(
     () =>
-      items.reduce(
-        (sum, row) =>
-          sum + summaryUnitPrice(row.product as any) * Number(row.qty || 1),
-        0,
-      ),
-    [items],
+      items.reduce((sum, row) => {
+        const currentProduct =
+          products.find(
+            (product) => String(product.id) === String(row.product.id),
+          ) ?? row.product;
+
+        return (
+          sum + summaryLineTotal(currentProduct, Number(row.qty || 1))
+        );
+      }, 0),
+    [items, products],
   );
 
   const deliveryBannerText = useMemo(
-    () => deriveDeliveryBannerText(selectedLocation, windowState),
+    () =>
+      selectedLocation
+        ? deriveDeliveryBannerText(selectedLocation, windowState)
+        : null,
     [selectedLocation, windowState],
   );
 
   function summaryUnitLabel(p: any) {
     const u = String(p?.unit || "").toLowerCase();
 
-    return u === "kg" ? "Price / kg" : "Price / pack";
+    if (u === "kg") {
+      const avgWeightG = summaryAvgWeightG(p);
+      return avgWeightG ? `Est. ${fmtGrams(avgWeightG, "g")} pack` : "Price / kg";
+    }
+
+    return "Price / pack";
   }
 
   function summaryUnitPrice(p: any) {
@@ -521,6 +546,40 @@ export default function ShopPage() {
     }
 
     return asNumber(p?.pricePerPack ?? p?.pricePack ?? p?.price) ?? 0;
+  }
+
+  function summaryAvgWeightG(p: any) {
+    const avgWeightG = asNumber(p?.avgWeightG);
+    return avgWeightG && avgWeightG > 0 ? avgWeightG : null;
+  }
+
+  function summaryEstimatedPackPrice(p: any) {
+    const unitPrice = summaryUnitPrice(p);
+    const unit = String(p?.unit || "").toLowerCase();
+    const avgWeightG = summaryAvgWeightG(p);
+
+    if (unit === "kg" && avgWeightG) {
+      return unitPrice * (avgWeightG / 1000);
+    }
+
+    return unitPrice;
+  }
+
+  function summaryLineTotal(p: any, qty: number) {
+    return summaryEstimatedPackPrice(p) * Math.max(1, Number(qty || 1));
+  }
+
+  function showCartConfirmation(content: string) {
+    setCartConfirmation(content);
+
+    if (cartConfirmationTimerRef.current !== null) {
+      window.clearTimeout(cartConfirmationTimerRef.current);
+    }
+
+    cartConfirmationTimerRef.current = window.setTimeout(() => {
+      setCartConfirmation(null);
+      cartConfirmationTimerRef.current = null;
+    }, 1900);
   }
 
   function stockFor(p: PricedProduct) {
@@ -552,6 +611,12 @@ export default function ShopPage() {
   }
 
   function confirmAddToCart(p: PricedProduct, desiredQty: number) {
+    if (!isWholesale && !selectedLocation) {
+      setLocationPromptOpen(true);
+      message.warning("Please select your delivery location first.");
+      return;
+    }
+
     if (locationUnavailable) {
       message.warning(locationUnavailableMessage);
       return;
@@ -573,7 +638,7 @@ export default function ShopPage() {
         onOk: () => {
           add(p as any, remaining);
           setQtyMap((m) => ({ ...m, [p.id]: remaining }));
-          message.success(`Added ${remaining} to cart`);
+          showCartConfirmation(`Added ${remaining} to cart`);
         },
       });
 
@@ -581,11 +646,18 @@ export default function ShopPage() {
     }
 
     add(p as any, desiredQty);
-    message.success("Added to cart");
+    showCartConfirmation("Added to cart");
   }
 
   return (
     <div className="aca-page">
+      {cartConfirmation ? (
+        <div className="aca-cartAddedToast" role="status" aria-live="polite">
+          <CheckCircleFilled aria-hidden="true" />
+          <span>{cartConfirmation}</span>
+        </div>
+      ) : null}
+
       <div
         className="aca-page__top"
         style={{
@@ -599,11 +671,13 @@ export default function ShopPage() {
           className="aca-displayTitle"
           style={{ marginBottom: 4 }}
         >
-          From our farm
+          {isWholesale ? "Wholesale ordering" : "From our farm"}
         </Title>
 
         <Text className="aca-subtitle">
-          Grass-fed, ethical and slow-raised meat.
+          {isWholesale
+            ? "Business pricing for approved wholesale partners."
+            : "Grass-fed, ethical and slow-raised meat."}
         </Text>
       </div>
 
@@ -637,23 +711,25 @@ export default function ShopPage() {
             />
           </div>
 
-          <div style={{ display: "grid", gap: 6 }}>
-            <Text type="secondary">Delivery location:</Text>
+          {!isWholesale ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              <Text type="secondary">Delivery location:</Text>
 
-            <Select
-              value={selectedLocationId ?? undefined}
-              onChange={savePreferredLocation}
-              placeholder="Select delivery location"
-              loading={loading}
-              popupMatchSelectWidth={false}
-              classNames={{ popup: { root: "aca-shopSelectPopup" } }}
-              style={{ width: "100%" }}
-              options={dropoffLocations.map((loc) => ({
-                value: loc.id,
-                label: loc.name,
-              }))}
-            />
-          </div>
+              <Select
+                value={selectedLocationId ?? undefined}
+                onChange={savePreferredLocation}
+                placeholder="Please select your location"
+                loading={loading}
+                popupMatchSelectWidth={false}
+                classNames={{ popup: { root: "aca-shopSelectPopup" } }}
+                style={{ width: "100%" }}
+                options={dropoffLocations.map((loc) => ({
+                  value: loc.id,
+                  label: loc.name,
+                }))}
+              />
+            </div>
+          ) : null}
 
           <div
             className="aca-shopControls__search"
@@ -681,7 +757,27 @@ export default function ShopPage() {
         </div>
       </div>
 
-      {deliveryBannerText ? (
+      {isWholesale ? (
+        <div style={{ marginTop: 12 }}>
+          <Alert
+            type="success"
+            showIcon
+            message="Wholesale orders can be placed for any delivery area. Enter your business details and requested delivery date at checkout."
+          />
+        </div>
+      ) : null}
+
+      {!isWholesale && !selectedLocation && !loading ? (
+        <div style={{ marginTop: 12 }}>
+          <Alert
+            type="info"
+            showIcon
+            message="Please select your delivery location to see the next available delivery date and add products to your cart."
+          />
+        </div>
+      ) : null}
+
+      {!isWholesale && deliveryBannerText ? (
         <div style={{ marginTop: 12 }}>
           <div
             style={{
@@ -761,7 +857,7 @@ export default function ShopPage() {
       ) : null}
 
       <div style={{ marginTop: 14 }}>
-        {!windowState.open && (
+        {!isWholesale && !windowState.open && (
           <Alert
             type="warning"
             message={windowState.message || "Ordering is closed."}
@@ -860,15 +956,21 @@ export default function ShopPage() {
                 ) : (
                   <div className="aca-orderSummaryCard__items">
                     {summaryItems.map((row) => {
-                      const img = resolveImageUrl(
-                        (row.product as any).imageUrl,
-                      );
-                      const unitLabel = summaryUnitLabel(row.product as any);
-                      const unitPrice = summaryUnitPrice(row.product as any);
-                      const qty = Number(row.qty || 1);
                       const prod = products.find(
-                        (pp) => String(pp.id) === String(row.product.id),
+                        (product) =>
+                          String(product.id) === String(row.product.id),
                       );
+                      const summaryProduct = prod ?? row.product;
+                      const img = resolveImageUrl(summaryProduct.imageUrl);
+                      const unitLabel = summaryUnitLabel(summaryProduct);
+                      const unitPrice = summaryUnitPrice(summaryProduct);
+                      const estimatedPackPrice = summaryEstimatedPackPrice(
+                        summaryProduct,
+                      );
+                      const isEstimated =
+                        String(summaryProduct.unit || "").toLowerCase() ===
+                          "kg" && summaryAvgWeightG(summaryProduct) !== null;
+                      const qty = Number(row.qty || 1);
 
                       return (
                         <div
@@ -959,9 +1061,21 @@ export default function ShopPage() {
                                       color: "var(--aca-forest)",
                                     }}
                                   >
-                                    {money(unitPrice)}
+                                    {money(estimatedPackPrice)}
                                   </span>
                                 </div>
+
+                                {isEstimated ? (
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      color: "var(--aca-muted)",
+                                      marginTop: 1,
+                                    }}
+                                  >
+                                    Based on {money(unitPrice)} / kg
+                                  </div>
+                                ) : null}
 
                                 <div
                                   style={{
@@ -970,9 +1084,9 @@ export default function ShopPage() {
                                     fontWeight: 800,
                                   }}
                                 >
-                                  Total:{" "}
+                                  {isEstimated ? "Estimated total" : "Total"}:{" "}
                                   <span style={{ color: "var(--aca-forest)" }}>
-                                    {money(unitPrice * qty)}
+                                    {money(summaryLineTotal(summaryProduct, qty))}
                                   </span>
                                 </div>
                               </div>
@@ -1124,7 +1238,9 @@ export default function ShopPage() {
               <Spin size="large" />
               <Text strong>Loading products...</Text>
               <Text type="secondary">
-                We are getting the latest cuts, stock and delivery dates.
+                {isWholesale
+                  ? "We are loading the wholesale catalogue."
+                  : "We are getting the latest cuts, stock and delivery dates."}
               </Text>
             </div>
           ) : (
@@ -1164,7 +1280,7 @@ export default function ShopPage() {
                 unitLower === "kg" ? "Price / kg" : "Price / pack";
 
               const addDisabled =
-                !windowState.open ||
+                (!isWholesale && !windowState.open) ||
                 soldOut ||
                 locationUnavailable ||
                 (remaining !== null && remaining <= 0);
@@ -1429,7 +1545,7 @@ export default function ShopPage() {
 
       <Modal
         title="Choose your delivery location"
-        open={locationPromptOpen}
+        open={locationPromptOpen && !isWholesale}
         closable={false}
         maskClosable={false}
         cancelButtonProps={{ style: { display: "none" } }}
@@ -1441,7 +1557,7 @@ export default function ShopPage() {
           <Select
             value={selectedLocationId ?? undefined}
             onChange={setSelectedLocationId}
-            placeholder="Select delivery location"
+            placeholder="Please select your location"
             style={{ width: "100%" }}
             options={dropoffLocations.map((loc) => ({
               value: loc.id,
@@ -1530,13 +1646,21 @@ export default function ShopPage() {
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
                 {summaryItems.map((row) => {
-                  const img = resolveImageUrl((row.product as any).imageUrl);
-                  const unitLabel = summaryUnitLabel(row.product as any);
-                  const unitPrice = summaryUnitPrice(row.product as any);
-                  const qty = Number(row.qty || 1);
                   const prod = products.find(
-                    (pp) => String(pp.id) === String(row.product.id),
+                    (product) =>
+                      String(product.id) === String(row.product.id),
                   );
+                  const summaryProduct = prod ?? row.product;
+                  const img = resolveImageUrl(summaryProduct.imageUrl);
+                  const unitLabel = summaryUnitLabel(summaryProduct);
+                  const unitPrice = summaryUnitPrice(summaryProduct);
+                  const estimatedPackPrice = summaryEstimatedPackPrice(
+                    summaryProduct,
+                  );
+                  const isEstimated =
+                    String(summaryProduct.unit || "").toLowerCase() ===
+                      "kg" && summaryAvgWeightG(summaryProduct) !== null;
+                  const qty = Number(row.qty || 1);
 
                   return (
                     <div
@@ -1626,9 +1750,21 @@ export default function ShopPage() {
                                   color: "var(--aca-forest)",
                                 }}
                               >
-                                {money(unitPrice)}
+                                {money(estimatedPackPrice)}
                               </span>
                             </div>
+
+                            {isEstimated ? (
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: "var(--aca-muted)",
+                                  marginTop: 1,
+                                }}
+                              >
+                                Based on {money(unitPrice)} / kg
+                              </div>
+                            ) : null}
 
                             <div
                               style={{
@@ -1637,9 +1773,9 @@ export default function ShopPage() {
                                 fontWeight: 800,
                               }}
                             >
-                              Total:{" "}
+                              {isEstimated ? "Estimated total" : "Total"}:{" "}
                               <span style={{ color: "var(--aca-forest)" }}>
-                                {money(unitPrice * qty)}
+                                {money(summaryLineTotal(summaryProduct, qty))}
                               </span>
                             </div>
                           </div>

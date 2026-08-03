@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -474,6 +475,14 @@ export default function WasteManagementTab({
           </Button>
         }
       >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Record Waste saves a new loss; History shows its audit trail"
+          description="Use History to review dated waste entries for a product and undo an entry recorded by mistake. Products with no saved waste will have an empty history."
+        />
+
         <Table
           loading={loading}
           rowKey="key"
@@ -634,6 +643,14 @@ export default function WasteManagementTab({
         footer={null}
         width={1000}
       >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Waste history"
+          description="Each row is a saved waste entry for this product, including quantity, weight, value, reason, and date."
+        />
+
         <Table
           loading={historyLoading}
           rowKey="id"
@@ -641,6 +658,7 @@ export default function WasteManagementTab({
           columns={historyColumns}
           pagination={{ pageSize: 10 }}
           scroll={{ x: 900 }}
+          locale={{ emptyText: "No waste has been recorded for this product yet." }}
         />
         <div style={{ marginTop: 12 }}>
           <Text type="secondary">Use Undo only for mistaken entries.</Text>

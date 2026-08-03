@@ -98,6 +98,10 @@ export type AdminOrderItem = {
   packWeights?: Array<{ value: number; unit: "kg" | "g" }>;
   wetWeightKg?: string | number | null;
   dryWeightKg?: string | number | null;
+  product?: {
+    avgWeightG?: number | null;
+    costPrice?: string | number | null;
+  } | null;
 };
 
 export type AdminOrder = {
@@ -106,6 +110,8 @@ export type AdminOrder = {
   customerName: string;
   customerPhone: string;
   customerEmail?: string | null;
+  businessName?: string | null;
+  requestedDeliveryDate?: string | null;
   pricingTier: string;
   status: string;
   notes?: string | null;
@@ -283,14 +289,6 @@ export default function AdminDashboardPage() {
     return products.reduce((sum, p) => sum + toNumber(p.totalWasteValue), 0);
   }, [products]);
 
-  const activeOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => String(order.status || "").toUpperCase() !== "DELIVERED",
-      ),
-    [orders],
-  );
-
   const logout = useCallback(async () => {
     try {
       await api.post("/api/admin/auth/logout");
@@ -374,7 +372,7 @@ export default function AdminDashboardPage() {
                 children: (
                   <DashboardTab
                     loading={loading}
-                    orders={activeOrders}
+                    orders={orders}
                     products={products}
                     windows={windows}
                     carcassWeights={carcassWeights}

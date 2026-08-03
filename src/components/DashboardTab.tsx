@@ -1,6 +1,7 @@
 // src/components/DashboardTab.tsx
 import React, { useMemo, useState } from "react";
 import {
+  Button,
   Card,
   Col,
   DatePicker,
@@ -99,6 +100,9 @@ export default function DashboardTab({
   ]);
 
   const [windowId, setWindowId] = useState<string | undefined>(undefined);
+  const [activePreset, setActivePreset] = useState<
+    "7" | "30" | "this_month" | "all" | null
+  >("30");
 
   const windowOptions = useMemo(
     () => [
@@ -425,6 +429,8 @@ export default function DashboardTab({
   ];
 
   function setPreset(preset: "7" | "30" | "this_month" | "all") {
+    setActivePreset(preset);
+
     if (preset === "all") {
       setRange([null, null]);
       return;
@@ -458,7 +464,10 @@ export default function DashboardTab({
               <Text type="secondary">Date range:</Text>
               <RangePicker
                 value={range as any}
-                onChange={(v) => setRange(v as any)}
+                onChange={(v) => {
+                  setRange(v as any);
+                  setActivePreset(null);
+                }}
                 allowEmpty={[true, true]}
                 placeholder={["Start", "End"]}
               />
@@ -483,27 +492,34 @@ export default function DashboardTab({
             style={{ display: "flex", justifyContent: "flex-end" }}
           >
             <Space wrap>
-              <Tag onClick={() => setPreset("7")} style={{ cursor: "pointer" }}>
+              <Button
+                size="small"
+                type={activePreset === "7" ? "primary" : "default"}
+                onClick={() => setPreset("7")}
+              >
                 Last 7 days
-              </Tag>
-              <Tag
+              </Button>
+              <Button
+                size="small"
+                type={activePreset === "30" ? "primary" : "default"}
                 onClick={() => setPreset("30")}
-                style={{ cursor: "pointer" }}
               >
                 Last 30 days
-              </Tag>
-              <Tag
+              </Button>
+              <Button
+                size="small"
+                type={activePreset === "this_month" ? "primary" : "default"}
                 onClick={() => setPreset("this_month")}
-                style={{ cursor: "pointer" }}
               >
                 This month
-              </Tag>
-              <Tag
+              </Button>
+              <Button
+                size="small"
+                type={activePreset === "all" ? "primary" : "default"}
                 onClick={() => setPreset("all")}
-                style={{ cursor: "pointer" }}
               >
                 All time
-              </Tag>
+              </Button>
             </Space>
           </Col>
         </Row>
@@ -598,6 +614,9 @@ export default function DashboardTab({
               precision={1}
               suffix="%"
             />
+            <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
+              Delivered orders ÷ all orders in the selected range and window
+            </div>
           </Card>
         </Col>
       </Row>

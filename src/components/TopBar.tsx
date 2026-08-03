@@ -20,6 +20,7 @@ import {
   InfoCircleOutlined,
   MailOutlined,
   MenuOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { useCart } from "../context/CartContext";
 
@@ -75,6 +76,11 @@ export default function TopBar() {
         icon: <ShopOutlined />,
       },
       {
+        key: "/wholesale",
+        label: <Link to="/wholesale">Wholesale</Link>,
+        icon: <TeamOutlined />,
+      },
+      {
         key: "/checkout",
         label: <Link to="/checkout">Checkout</Link>,
         icon: <ShoppingCartOutlined />,
@@ -96,11 +102,12 @@ export default function TopBar() {
   const selectedKey = useMemo(() => {
     if (location.pathname.startsWith("/admin")) return "";
 
-    if (location.pathname === "/" || location.pathname.startsWith("/about")) {
+    if (location.pathname.startsWith("/about")) {
       return "/about";
     }
 
     if (
+      location.pathname === "/" ||
       location.pathname === "/products" ||
       location.pathname.startsWith("/products") ||
       location.pathname === "/shop"
@@ -109,6 +116,8 @@ export default function TopBar() {
     }
 
     if (location.pathname.startsWith("/checkout")) return "/checkout";
+
+    if (location.pathname.startsWith("/wholesale")) return "/wholesale";
 
     if (
       location.pathname.startsWith("/track") ||

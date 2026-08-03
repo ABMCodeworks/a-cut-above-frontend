@@ -698,6 +698,34 @@ body {
   border-radius: 12px !important;
 }
 
+.aca-cartAddedToast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 2200;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: min(320px, calc(100vw - 32px));
+  padding: 18px 24px;
+  border: 1px solid color-mix(in srgb, var(--aca-gold) 55%, transparent);
+  border-radius: 16px;
+  background: var(--aca-forest);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.32);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.aca-cartAddedToast .anticon {
+  color: var(--aca-gold);
+  font-size: 24px;
+}
+
 .aca-shopLoading {
   min-height: 340px;
   display: grid;

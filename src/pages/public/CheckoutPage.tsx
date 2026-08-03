@@ -5,6 +5,7 @@ import {
   Alert,
   Button,
   Card,
+  DatePicker,
   Divider,
   Form,
   Input,
@@ -139,9 +140,13 @@ function normalizeIntlPhone(phone: string) {
 export default function CheckoutPage() {
   const { items, clear, setQty, remove } = useCart();
   const navigate = useNavigate();
+  const isWholesale = useMemo(
+    () => Boolean(localStorage.getItem("aca_wholesale_pin")),
+    [],
+  );
 
   const [windowState, setWindowState] = useState({
-    open: false,
+    open: isWholesale,
   } as WindowState);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
@@ -212,10 +217,14 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    loadWindow();
-    loadDropoffs();
+    if (isWholesale) {
+      setWindowState({ open: true });
+    } else {
+      loadWindow();
+      loadDropoffs();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isWholesale]);
 
   const selectedDropoffId = Form.useWatch("dropoffLocationId", form);
 
@@ -253,7 +262,8 @@ export default function CheckoutPage() {
     return { has: Boolean(cutoff && nextDelivery), cutoff, nextDelivery };
   }, [selectedDropoff]);
 
-  const deliveryScheduleAvailable = Boolean(selectedDropoff && deliveryInfo.has);
+  const deliveryScheduleAvailable =
+    isWholesale || Boolean(selectedDropoff && deliveryInfo.has);
 
   async function runStockCheck() {
     if (!items.length) {
@@ -357,16 +367,23 @@ export default function CheckoutPage() {
     return Object.keys(stockIssuesById).length > 0;
   }, [stockIssuesById]);
 
-  const mutareMinimumMet = !isMutare || cartSubtotal >= MUTARE_MINIMUM;
+  const mutareMinimumMet =
+    isWholesale || !isMutare || cartSubtotal >= MUTARE_MINIMUM;
 
   async function doSubmit(values: any) {
     const customerName = String(values.customerName || "").trim();
     const customerPhone = normalizeIntlPhone(phoneValue);
     const dropoffLocationId = String(values.dropoffLocationId || "").trim();
     const personalAddress = String(values.personalAddress || "").trim();
+    const businessName = String(values.businessName || "").trim();
+    const customerEmail = String(values.customerEmail || "").trim();
+    const notes = String(values.notes || "").trim();
+    const requestedDeliveryDate = values.requestedDeliveryDate
+      ? values.requestedDeliveryDate.format("YYYY-MM-DD")
+      : "";
 
     if (items.length === 0) return;
-    if (!windowState.open) return;
+    if (!isWholesale && !windowState.open) return;
 
     setSubmitting(true);
     try {
@@ -376,10 +393,16 @@ export default function CheckoutPage() {
       const payload = {
         customerName,
         customerPhone,
-        customerEmail: "",
-        dropoffLocationId,
-        personalAddress: isMutare ? personalAddress : "",
-        notes: "",
+        customerEmail: isWholesale ? customerEmail : "",
+        businessName: isWholesale ? businessName : "",
+        requestedDeliveryDate: isWholesale ? requestedDeliveryDate : "",
+        dropoffLocationId: isWholesale ? "" : dropoffLocationId,
+        personalAddress: isWholesale
+          ? personalAddress
+          : isMutare
+            ? personalAddress
+            : "",
+        notes: isWholesale ? notes : "",
         discountCode: discountPreview?.code ?? discountCodeInput.trim(),
         items: items.map((i) => ({ productId: i.product.id, qty: i.qty })),
       };
@@ -396,6 +419,7 @@ export default function CheckoutPage() {
           successOrderNo: res.data?.orderNo,
           successDeliveryDate:
             res.data?.deliverySchedule?.deliveryDate ??
+            res.data?.requestedDeliveryDate ??
             res.data?.deliveryDate ??
             deliveryInfo.nextDelivery?.toISOString() ??
             null,
@@ -418,7 +442,7 @@ export default function CheckoutPage() {
 
   async function submit(values: any) {
     if (items.length === 0) return;
-    if (!windowState.open) return;
+    if (!isWholesale && !windowState.open) return;
 
     if (normalizeIntlPhone(phoneValue).length < 8) {
       form.setFields([
@@ -430,7 +454,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (isMutare && cartSubtotal < MUTARE_MINIMUM) {
+    if (!isWholesale && isMutare && cartSubtotal < MUTARE_MINIMUM) {
       form.setFields([
         {
           name: "dropoffLocationId",
@@ -442,7 +466,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!deliveryScheduleAvailable) {
+    if (!isWholesale && !deliveryScheduleAvailable) {
       form.setFields([
         {
           name: "dropoffLocationId",
@@ -464,10 +488,12 @@ export default function CheckoutPage() {
             className="aca-displayTitle"
             style={{ marginBottom: 4 }}
           >
-            Secure Checkout
+            {isWholesale ? "Wholesale Checkout" : "Secure Checkout"}
           </Title>
           <Text className="aca-subtitle">
-            Enter your details to receive your premium cuts.
+            {isWholesale
+              ? "Tell us about your business and when you need the order."
+              : "Enter your details to receive your premium cuts."}
           </Text>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -478,7 +504,7 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {!windowState.open ? (
+      {!isWholesale && !windowState.open ? (
         <Alert
           type="warning"
           message={windowState.message || "Ordering is closed."}
@@ -488,7 +514,7 @@ export default function CheckoutPage() {
         />
       ) : null}
 
-      {selectedDropoff ? (
+      {!isWholesale && selectedDropoff ? (
         <div style={{ marginTop: 10, marginBottom: 12 }}>
           {deliveryInfo.has ? (
             <Alert
@@ -524,15 +550,38 @@ export default function CheckoutPage() {
         <div style={{ display: "grid", gap: 16 }}>
           <Card className="aca-card">
             <Title level={3} style={{ marginTop: 0 }}>
-              Your Details
+              {isWholesale ? "Business Details" : "Your Details"}
             </Title>
             <Text type="secondary">
-              Choose where you'd like your order dropped.
+              {isWholesale
+                ? "All details are entered manually. We will confirm delivery arrangements with your business."
+                : "Choose where you'd like your order dropped."}
             </Text>
 
             <Divider />
 
             <Form layout="vertical" form={form} onFinish={submit}>
+              {isWholesale ? (
+                <Form.Item
+                  name="businessName"
+                  label={
+                    <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                      BUSINESS NAME
+                    </span>
+                  }
+                  rules={[
+                    { required: true, message: "Please enter the business name" },
+                    {
+                      min: 2,
+                      message: "Business name must be at least 2 characters",
+                    },
+                  ]}
+                  normalize={(v) => String(v || "")}
+                >
+                  <Input placeholder="e.g. Sterling Butchery" />
+                </Form.Item>
+              ) : null}
+
               <div
                 style={{
                   display: "grid",
@@ -544,11 +593,16 @@ export default function CheckoutPage() {
                   name="customerName"
                   label={
                     <span style={{ letterSpacing: 1, fontWeight: 800 }}>
-                      FULL NAME
+                      {isWholesale ? "POINT OF CONTACT" : "FULL NAME"}
                     </span>
                   }
                   rules={[
-                    { required: true, message: "Please enter your name" },
+                    {
+                      required: true,
+                      message: isWholesale
+                        ? "Please enter a point of contact"
+                        : "Please enter your name",
+                    },
                     {
                       validator: (_, value) => {
                         if (String(value || "").trim().length >= 2) {
@@ -562,7 +616,11 @@ export default function CheckoutPage() {
                   ]}
                   normalize={(v) => String(v || "")}
                 >
-                  <Input placeholder="e.g. James Sterling" />
+                  <Input
+                    placeholder={
+                      isWholesale ? "Contact person's name" : "e.g. James Sterling"
+                    }
+                  />
                 </Form.Item>
 
                 <Form.Item
@@ -620,93 +678,182 @@ export default function CheckoutPage() {
                     />
                   </div>
                 </Form.Item>
+
+                {isWholesale ? (
+                  <Form.Item
+                    name="customerEmail"
+                    label={
+                      <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                        BUSINESS EMAIL
+                      </span>
+                    }
+                    rules={[{ type: "email", message: "Enter a valid email" }]}
+                  >
+                    <Input type="email" placeholder="Optional" />
+                  </Form.Item>
+                ) : null}
+
+                {isWholesale ? (
+                  <Form.Item
+                    name="requestedDeliveryDate"
+                    label={
+                      <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                        REQUESTED DELIVERY DATE
+                      </span>
+                    }
+                    extra="Tell us when you need the order. We will confirm the final date."
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please choose a requested delivery date",
+                      },
+                    ]}
+                  >
+                    <DatePicker
+                      style={{ width: "100%" }}
+                      format="D MMM YYYY"
+                      placeholder="Select requested date"
+                    />
+                  </Form.Item>
+                ) : null}
               </div>
 
-              {isMutare ? (
-                <Alert
-                  type={mutareMinimumMet ? "info" : "error"}
-                  showIcon
-                  message="Mutare delivery requirements"
-                  description={
-                    <div
-                      style={{ display: "grid", gap: 4, marginBottom: "10px" }}
-                    >
-                      <div>
-                        Minimum order value: <b>${MUTARE_MINIMUM.toFixed(2)}</b>
-                      </div>
-                    </div>
-                  }
-                />
-              ) : null}
+              {!isWholesale ? (
+                <>
+                  {isMutare ? (
+                    <Alert
+                      type={mutareMinimumMet ? "info" : "error"}
+                      showIcon
+                      message="Mutare delivery requirements"
+                      description={
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 4,
+                            marginBottom: "10px",
+                          }}
+                        >
+                          <div>
+                            Minimum order value:{" "}
+                            <b>${MUTARE_MINIMUM.toFixed(2)}</b>
+                          </div>
+                        </div>
+                      }
+                    />
+                  ) : null}
 
-              <Form.Item
-                name="dropoffLocationId"
-                label={
-                  <span style={{ letterSpacing: 1, fontWeight: 800 }}>
-                    DELIVERY LOCATION
-                  </span>
-                }
-                rules={[
-                  {
-                    required: true,
-                    message: "Please choose a drop-off location",
-                  },
-                ]}
-              >
-                <Select
-                  loading={dropoffsLoading}
-                  placeholder="Select a drop-off location"
-                  onChange={(v) => {
-                    if (v) localStorage.setItem(PREFERRED_LOCATION_KEY, v);
-                  }}
-                  options={dropoffs
-                    .filter((d) => d.isActive)
-                    .sort(
-                      (a, b) =>
-                        a.sortOrder - b.sortOrder ||
-                        a.name.localeCompare(b.name),
-                    )
-                    .map((d) => ({
-                      value: d.id,
-                      label: d.description
-                        ? `${d.name} — ${d.description}`
-                        : d.name,
-                    }))}
-                />
-              </Form.Item>
-
-              {isMutare ? (
-                <Form.Item
-                  name="personalAddress"
-                  label={
-                    <span style={{ letterSpacing: 1, fontWeight: 800 }}>
-                      PERSONAL ADDRESS
-                    </span>
-                  }
-                  rules={[
-                    {
-                      required: true,
-                      message: "Please enter your personal address for Mutare",
-                    },
-                    {
-                      validator: (_, value) => {
-                        if (String(value || "").trim().length >= 6) {
-                          return Promise.resolve();
-                        }
-                        return Promise.reject(
-                          "Address must be at least 6 characters",
-                        );
+                  <Form.Item
+                    name="dropoffLocationId"
+                    label={
+                      <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                        DELIVERY LOCATION
+                      </span>
+                    }
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please choose a drop-off location",
                       },
-                    },
-                  ]}
-                  normalize={(v) => String(v || "")}
-                >
-                  <Input.TextArea
-                    rows={3}
-                    placeholder="Enter your full personal address"
-                  />
-                </Form.Item>
-              ) : null}
+                    ]}
+                  >
+                    <Select
+                      loading={dropoffsLoading}
+                      placeholder="Select a drop-off location"
+                      onChange={(v) => {
+                        if (v) localStorage.setItem(PREFERRED_LOCATION_KEY, v);
+                      }}
+                      options={dropoffs
+                        .filter((d) => d.isActive)
+                        .sort(
+                          (a, b) =>
+                            a.sortOrder - b.sortOrder ||
+                            a.name.localeCompare(b.name),
+                        )
+                        .map((d) => ({
+                          value: d.id,
+                          label: d.description
+                            ? `${d.name} — ${d.description}`
+                            : d.name,
+                        }))}
+                    />
+                  </Form.Item>
+
+                  {isMutare ? (
+                    <Form.Item
+                      name="personalAddress"
+                      label={
+                        <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                          PERSONAL ADDRESS
+                        </span>
+                      }
+                      rules={[
+                        {
+                          required: true,
+                          message:
+                            "Please enter your personal address for Mutare",
+                        },
+                        {
+                          validator: (_, value) => {
+                            if (String(value || "").trim().length >= 6) {
+                              return Promise.resolve();
+                            }
+                            return Promise.reject(
+                              "Address must be at least 6 characters",
+                            );
+                          },
+                        },
+                      ]}
+                      normalize={(v) => String(v || "")}
+                    >
+                      <Input.TextArea
+                        rows={3}
+                        placeholder="Enter your full personal address"
+                      />
+                    </Form.Item>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Form.Item
+                    name="personalAddress"
+                    label={
+                      <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                        DELIVERY ADDRESS / AREA
+                      </span>
+                    }
+                    rules={[
+                      {
+                        required: true,
+                        message: "Please enter the business delivery address",
+                      },
+                      {
+                        min: 6,
+                        message: "Address must be at least 6 characters",
+                      },
+                    ]}
+                    normalize={(v) => String(v || "")}
+                  >
+                    <Input.TextArea
+                      rows={3}
+                      placeholder="Enter the full delivery address and area"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="notes"
+                    label={
+                      <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                        DELIVERY NOTES
+                      </span>
+                    }
+                  >
+                    <Input.TextArea
+                      rows={3}
+                      placeholder="Access instructions or other business requirements (optional)"
+                    />
+                  </Form.Item>
+                </>
+              )}
 
               <Divider />
 
@@ -722,7 +869,7 @@ export default function CheckoutPage() {
                   htmlType="submit"
                   loading={submitting}
                   disabled={
-                    !windowState.open ||
+                    (!isWholesale && !windowState.open) ||
                     items.length === 0 ||
                     hasBlockingIssues ||
                     !mutareMinimumMet ||
@@ -760,7 +907,7 @@ export default function CheckoutPage() {
                 </div>
               ) : null}
 
-              {!deliveryScheduleAvailable ? (
+              {!isWholesale && !deliveryScheduleAvailable ? (
                 <div style={{ marginTop: 10 }}>
                   <Text strong style={{ color: "#d48806" }}>
                     This delivery location does not have an upcoming delivery

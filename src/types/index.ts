@@ -6,6 +6,10 @@ export type Product = {
   description?: string | null;
   unit: string;
   price: number;
+  pricePerKg?: number | null;
+  pricePerPack?: number | null;
+  packSizeKg?: number | null;
+  avgWeightG?: number | null;
   originalPrice?: number;
   discountPercent?: number;
   stockQty: number | null;
