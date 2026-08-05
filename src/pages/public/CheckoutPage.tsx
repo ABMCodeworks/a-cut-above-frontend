@@ -33,7 +33,6 @@ import { api, RAILWAY_BASE } from "../../api/client";
 import { useCart } from "../../context/CartContext";
 
 const { Title, Text } = Typography;
-const MUTARE_MINIMUM = 50;
 const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
 
 type WindowState = {
@@ -50,6 +49,8 @@ type DropoffLocation = {
   description?: string | null;
   isActive: boolean;
   sortOrder: number;
+  minimumOrderValue: number;
+  minimumOrderAppliesToWholesale: boolean;
   nextSchedule?: {
     cutoffDate: string;
     deliveryDate: string;
@@ -186,6 +187,10 @@ export default function CheckoutPage() {
         description: x.description ?? null,
         isActive: Boolean(x.isActive),
         sortOrder: Number(x.sortOrder ?? 0),
+        minimumOrderValue: Number(x.minimumOrderValue ?? 0),
+        minimumOrderAppliesToWholesale: Boolean(
+          x.minimumOrderAppliesToWholesale,
+        ),
         nextSchedule: x.nextSchedule ?? null,
       }));
 
@@ -221,8 +226,8 @@ export default function CheckoutPage() {
       setWindowState({ open: true });
     } else {
       loadWindow();
-      loadDropoffs();
     }
+    loadDropoffs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isWholesale]);
 
@@ -367,8 +372,13 @@ export default function CheckoutPage() {
     return Object.keys(stockIssuesById).length > 0;
   }, [stockIssuesById]);
 
-  const mutareMinimumMet =
-    isWholesale || !isMutare || cartSubtotal >= MUTARE_MINIMUM;
+  const minimumOrderValue = Number(selectedDropoff?.minimumOrderValue || 0);
+  const minimumOrderApplies =
+    minimumOrderValue > 0 &&
+    (!isWholesale ||
+      Boolean(selectedDropoff?.minimumOrderAppliesToWholesale));
+  const minimumOrderMet =
+    !minimumOrderApplies || cartSubtotal >= minimumOrderValue;
 
   async function doSubmit(values: any) {
     const customerName = String(values.customerName || "").trim();
@@ -396,7 +406,7 @@ export default function CheckoutPage() {
         customerEmail: isWholesale ? customerEmail : "",
         businessName: isWholesale ? businessName : "",
         requestedDeliveryDate: isWholesale ? requestedDeliveryDate : "",
-        dropoffLocationId: isWholesale ? "" : dropoffLocationId,
+        dropoffLocationId,
         personalAddress: isWholesale
           ? personalAddress
           : isMutare
@@ -454,12 +464,12 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!isWholesale && isMutare && cartSubtotal < MUTARE_MINIMUM) {
+    if (!minimumOrderMet) {
       form.setFields([
         {
           name: "dropoffLocationId",
           errors: [
-            `Mutare orders must be at least $${MUTARE_MINIMUM.toFixed(2)}.`,
+            `${selectedDropoff?.name || "This location"} orders must be at least $${minimumOrderValue.toFixed(2)}.`,
           ],
         },
       ]);
@@ -718,100 +728,92 @@ export default function CheckoutPage() {
                 ) : null}
               </div>
 
-              {!isWholesale ? (
-                <>
-                  {isMutare ? (
-                    <Alert
-                      type={mutareMinimumMet ? "info" : "error"}
-                      showIcon
-                      message="Mutare delivery requirements"
-                      description={
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 4,
-                            marginBottom: "10px",
-                          }}
-                        >
-                          <div>
-                            Minimum order value:{" "}
-                            <b>${MUTARE_MINIMUM.toFixed(2)}</b>
-                          </div>
-                        </div>
-                      }
-                    />
-                  ) : null}
+              {minimumOrderApplies ? (
+                <Alert
+                  type={minimumOrderMet ? "info" : "error"}
+                  showIcon
+                  message={`${selectedDropoff?.name || "Delivery location"} order requirements`}
+                  description={
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div>
+                        Minimum order value:{" "}
+                        <b>${minimumOrderValue.toFixed(2)}</b>
+                      </div>
+                    </div>
+                  }
+                  style={{ marginBottom: 16 }}
+                />
+              ) : null}
 
+              <Form.Item
+                name="dropoffLocationId"
+                label={
+                  <span style={{ letterSpacing: 1, fontWeight: 800 }}>
+                    DELIVERY LOCATION
+                  </span>
+                }
+                rules={[
+                  {
+                    required: true,
+                    message: "Please choose a delivery location",
+                  },
+                ]}
+              >
+                <Select
+                  loading={dropoffsLoading}
+                  placeholder="Select a delivery location"
+                  onChange={(v) => {
+                    if (v) localStorage.setItem(PREFERRED_LOCATION_KEY, v);
+                  }}
+                  options={dropoffs
+                    .filter((d) => d.isActive)
+                    .sort(
+                      (a, b) =>
+                        a.sortOrder - b.sortOrder ||
+                        a.name.localeCompare(b.name),
+                    )
+                    .map((d) => ({
+                      value: d.id,
+                      label: d.description
+                        ? `${d.name} — ${d.description}`
+                        : d.name,
+                    }))}
+                />
+              </Form.Item>
+
+              {!isWholesale ? (
+                isMutare ? (
                   <Form.Item
-                    name="dropoffLocationId"
+                    name="personalAddress"
                     label={
                       <span style={{ letterSpacing: 1, fontWeight: 800 }}>
-                        DELIVERY LOCATION
+                        PERSONAL ADDRESS
                       </span>
                     }
                     rules={[
                       {
                         required: true,
-                        message: "Please choose a drop-off location",
+                        message: "Please enter your personal address for Mutare",
+                      },
+                      {
+                        validator: (_, value) => {
+                          if (String(value || "").trim().length >= 6) {
+                            return Promise.resolve();
+                          }
+                          return Promise.reject(
+                            "Address must be at least 6 characters",
+                          );
+                        },
                       },
                     ]}
+                    normalize={(v) => String(v || "")}
                   >
-                    <Select
-                      loading={dropoffsLoading}
-                      placeholder="Select a drop-off location"
-                      onChange={(v) => {
-                        if (v) localStorage.setItem(PREFERRED_LOCATION_KEY, v);
-                      }}
-                      options={dropoffs
-                        .filter((d) => d.isActive)
-                        .sort(
-                          (a, b) =>
-                            a.sortOrder - b.sortOrder ||
-                            a.name.localeCompare(b.name),
-                        )
-                        .map((d) => ({
-                          value: d.id,
-                          label: d.description
-                            ? `${d.name} — ${d.description}`
-                            : d.name,
-                        }))}
+                    <Input.TextArea
+                      rows={3}
+                      placeholder="Enter your full personal address"
                     />
                   </Form.Item>
-
-                  {isMutare ? (
-                    <Form.Item
-                      name="personalAddress"
-                      label={
-                        <span style={{ letterSpacing: 1, fontWeight: 800 }}>
-                          PERSONAL ADDRESS
-                        </span>
-                      }
-                      rules={[
-                        {
-                          required: true,
-                          message:
-                            "Please enter your personal address for Mutare",
-                        },
-                        {
-                          validator: (_, value) => {
-                            if (String(value || "").trim().length >= 6) {
-                              return Promise.resolve();
-                            }
-                            return Promise.reject(
-                              "Address must be at least 6 characters",
-                            );
-                          },
-                        },
-                      ]}
-                      normalize={(v) => String(v || "")}
-                    >
-                      <Input.TextArea
-                        rows={3}
-                        placeholder="Enter your full personal address"
-                      />
-                    </Form.Item>
-                  ) : null}
-                </>
+                ) : null
               ) : (
                 <>
                   <Form.Item
@@ -872,7 +874,7 @@ export default function CheckoutPage() {
                     (!isWholesale && !windowState.open) ||
                     items.length === 0 ||
                     hasBlockingIssues ||
-                    !mutareMinimumMet ||
+                    !minimumOrderMet ||
                     !deliveryScheduleAvailable
                   }
                   icon={<LockOutlined />}
@@ -899,10 +901,11 @@ export default function CheckoutPage() {
                 </div>
               ) : null}
 
-              {!mutareMinimumMet ? (
+              {!minimumOrderMet ? (
                 <div style={{ marginTop: 10 }}>
                   <Text strong style={{ color: "#d48806" }}>
-                    Mutare orders must be at least ${MUTARE_MINIMUM.toFixed(2)}.
+                    {selectedDropoff?.name || "This location"} orders must be at
+                    least ${minimumOrderValue.toFixed(2)}.
                   </Text>
                 </div>
               ) : null}

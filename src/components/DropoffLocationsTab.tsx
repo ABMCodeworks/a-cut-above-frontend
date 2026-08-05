@@ -9,6 +9,7 @@ import {
   Form,
   Grid,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
   Space,
@@ -40,6 +41,8 @@ export type DeliveryLocation = {
   description?: string | null;
   sortOrder: number;
   isActive: boolean;
+  minimumOrderValue: number;
+  minimumOrderAppliesToWholesale: boolean;
   schedules?: DeliverySchedule[];
 };
 
@@ -47,6 +50,8 @@ type LocationFormValues = {
   name: string;
   description?: string;
   isActive: boolean;
+  minimumOrderValue: number;
+  minimumOrderAppliesToWholesale: boolean;
 };
 
 type ScheduleFormValues = {
@@ -334,7 +339,13 @@ export default function DeliveryLocationsTab({
   function openCreate() {
     setEditingLocation(null);
     locationForm.resetFields();
-    locationForm.setFieldsValue({ name: "", description: "", isActive: true });
+    locationForm.setFieldsValue({
+      name: "",
+      description: "",
+      isActive: true,
+      minimumOrderValue: 0,
+      minimumOrderAppliesToWholesale: false,
+    });
     setLocationModalOpen(true);
   }
 
@@ -345,6 +356,10 @@ export default function DeliveryLocationsTab({
       name: r.name,
       description: r.description || "",
       isActive: r.isActive,
+      minimumOrderValue: Number(r.minimumOrderValue || 0),
+      minimumOrderAppliesToWholesale: Boolean(
+        r.minimumOrderAppliesToWholesale,
+      ),
     });
     setLocationModalOpen(true);
   }
@@ -355,6 +370,9 @@ export default function DeliveryLocationsTab({
       name: values.name,
       description: values.description || "",
       isActive: values.isActive ?? true,
+      minimumOrderValue: Number(values.minimumOrderValue || 0),
+      minimumOrderAppliesToWholesale:
+        values.minimumOrderAppliesToWholesale ?? false,
     };
 
     try {
@@ -453,6 +471,17 @@ export default function DeliveryLocationsTab({
                 ) : (
                   <Tag color="red">Inactive</Tag>
                 )}
+                {Number(r.minimumOrderValue || 0) > 0 ? (
+                  <Tag color="gold">
+                    ${Number(r.minimumOrderValue).toFixed(2)} minimum
+                  </Tag>
+                ) : (
+                  <Tag>No minimum</Tag>
+                )}
+                {Number(r.minimumOrderValue || 0) > 0 &&
+                r.minimumOrderAppliesToWholesale ? (
+                  <Tag color="blue">Includes wholesale</Tag>
+                ) : null}
               </div>
             </div>
           ),
@@ -666,6 +695,30 @@ export default function DeliveryLocationsTab({
               placeholder="Short hint customers will see (optional)"
               size={isMobile ? "large" : "middle"}
             />
+          </Form.Item>
+
+          <Form.Item
+            name="minimumOrderValue"
+            label="Minimum order value"
+            extra="Set to 0 for no minimum order requirement."
+            rules={[{ required: true, message: "Enter a minimum order value" }]}
+          >
+            <InputNumber
+              min={0}
+              precision={2}
+              prefix="$"
+              style={{ width: "100%" }}
+              size={isMobile ? "large" : "middle"}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="minimumOrderAppliesToWholesale"
+            label="Apply minimum to wholesale orders"
+            valuePropName="checked"
+            tooltip="When enabled, wholesale customers choosing this location must also meet its minimum order value."
+          >
+            <Switch />
           </Form.Item>
 
           <Form.Item
