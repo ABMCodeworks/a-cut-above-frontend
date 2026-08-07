@@ -225,6 +225,11 @@ export default function DashboardTab({
     const moneyOrders = moneyReadyOrders.length;
 
     const revenue = moneyReadyOrders.reduce((acc, o) => acc + n(o.total), 0);
+    const discounts = moneyReadyOrders.reduce(
+      (acc, o) => acc + n(o.discountTotal),
+      0,
+    );
+    const grossRevenue = revenue + discounts;
     const avgOrder = moneyOrders ? revenue / moneyOrders : 0;
 
     const profit = moneyReadyOrders.reduce((acc, o) => {
@@ -260,6 +265,8 @@ export default function DashboardTab({
     return {
       totalOrders,
       revenue,
+      discounts,
+      grossRevenue,
       avgOrder,
       profit,
       itemsSold,
@@ -529,11 +536,23 @@ export default function DashboardTab({
         <Col xs={24} sm={12} lg={6}>
           <Card className="aca-card" loading={loading}>
             <Statistic
-              title="Revenue (finalized)"
+              title="Revenue after discounts"
               value={money(kpis.revenue)}
             />
             <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
               Uses backend totals only after kg weights are complete
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} lg={6}>
+          <Card className="aca-card" loading={loading}>
+            <Statistic
+              title="Discounts applied"
+              value={money(kpis.discounts)}
+            />
+            <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
+              Gross sales: <b>{money(kpis.grossRevenue)}</b>
             </div>
           </Card>
         </Col>

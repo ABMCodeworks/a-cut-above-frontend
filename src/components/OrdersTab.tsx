@@ -196,35 +196,6 @@ function orderProfit(order: AdminOrder) {
   }, 0);
 }
 
-function recomputeOrderClient(order: AdminOrder) {
-  const nextItems = (order.items || []).map((it: any) => {
-    const unit = String(it.unit || "").toLowerCase();
-    const unitPrice = Number(it.unitPrice || 0);
-    const qty = Number(it.qty || 0);
-
-    if (unit === "kg") {
-      const w = it.weightKg;
-      const weightKg =
-        w === null || w === undefined || w === "" ? null : Number(w);
-      const lineTotal =
-        weightKg == null || !Number.isFinite(weightKg)
-          ? 0
-          : unitPrice * weightKg;
-
-      return { ...it, lineTotal };
-    }
-
-    return { ...it, lineTotal: unitPrice * qty };
-  });
-
-  const subtotal = nextItems.reduce((sum: number, it: any) => {
-    const lt = Number(it.lineTotal || 0);
-    return sum + (Number.isFinite(lt) ? lt : 0);
-  }, 0);
-
-  return { items: nextItems, subtotal, total: subtotal };
-}
-
 function normalizeWeightToKg(
   value: number | undefined | null,
   unit: "kg" | "g",
@@ -919,7 +890,6 @@ export default function OrdersTab({
     const normalized = (orders || []).map((o) => ({
       ...o,
       status: o.status === "ORDER_PLACED" ? "READY_TO_PACK" : o.status,
-      ...recomputeOrderClient(o),
     }));
 
     setDisplayOrders(normalized);
@@ -1255,7 +1225,7 @@ export default function OrdersTab({
       setDisplayOrders((prev) =>
         prev.map((o) =>
           String(o.id) === String(updated.id)
-            ? ({ ...updated, ...recomputeOrderClient(updated) } as any)
+            ? updated
             : o,
         ),
       );
@@ -1308,7 +1278,7 @@ export default function OrdersTab({
       setDisplayOrders((prev) =>
         prev.map((order) =>
           String(order.id) === String(updated.id)
-            ? ({ ...updated, ...recomputeOrderClient(updated) } as any)
+            ? updated
             : order,
         ),
       );
@@ -1446,7 +1416,7 @@ export default function OrdersTab({
       setDisplayOrders((prev) =>
         prev.map((o) =>
           String(o.id) === String(updated.id)
-            ? ({ ...updated, ...recomputeOrderClient(updated) } as any)
+            ? updated
             : o,
         ),
       );
@@ -1754,7 +1724,11 @@ export default function OrdersTab({
       "Order No",
       "Location",
       ...productNames,
-      "Order Total",
+      "Pre-discount Total",
+      "Discount",
+      "Discount %",
+      "Discount Code",
+      "Total After Discount",
     ];
     const rows: any[][] = [];
     const totals: Record<
@@ -1789,7 +1763,11 @@ export default function OrdersTab({
         totals[name].isKg = totals[name].isKg || kgItem;
       }
 
+      const subtotal = Number((order as any).subtotal || 0);
+      const discountTotal = Number((order as any).discountTotal || 0);
       const orderTotal = Number((order as any).total || 0);
+      const discountPercent =
+        subtotal > 0 ? (discountTotal / subtotal) * 100 : 0;
       grandTotal += Number.isFinite(orderTotal) ? orderTotal : 0;
 
       rows.push([
@@ -1799,6 +1777,10 @@ export default function OrdersTab({
         order.orderNo ?? "",
         orderLocationName(order),
         ...productNames.map((productName) => qtyByProduct[productName] || ""),
+        Number.isFinite(subtotal) ? subtotal : 0,
+        Number.isFinite(discountTotal) ? discountTotal : 0,
+        Number.isFinite(discountPercent) ? discountPercent / 100 : 0,
+        (order as any).discountCode || "",
         orderTotal,
       ]);
     }
@@ -1823,6 +1805,10 @@ export default function OrdersTab({
 
         return total.amount || 0;
       }),
+      "",
+      "",
+      "",
+      "",
       grandTotal,
     ];
 
@@ -1835,6 +1821,10 @@ export default function OrdersTab({
       ...productNames.map((productName) => ({
         width: Math.max(12, Math.min(32, productName.length + 2)),
       })),
+      { width: 18 },
+      { width: 14 },
+      { width: 12, format: "0.0%" },
+      { width: 16 },
       { width: 14 },
     ];
 

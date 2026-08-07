@@ -93,6 +93,12 @@ export type AdminOrderItem = {
   unit: string;
   qty: string | number;
   unitPrice?: string | number;
+  lineSubtotal?: string | number;
+  discountTotal?: string | number;
+  productDiscountPercent?: string | number;
+  codeDiscountType?: string | null;
+  codeDiscountValue?: string | number;
+  codeDiscountApplies?: boolean;
   lineTotal?: string | number;
   weightKg?: string | number | null;
   packWeights?: Array<{ value: number; unit: "kg" | "g" }>;
@@ -118,6 +124,10 @@ export type AdminOrder = {
   personalAddress?: string | null;
   packerInitials?: string | null;
   subtotal: number;
+  discountTotal?: string | number;
+  productDiscountTotal?: string | number;
+  codeDiscountTotal?: string | number;
+  discountCode?: string | null;
   total: number;
   createdAt: string;
   updatedAt: string;
