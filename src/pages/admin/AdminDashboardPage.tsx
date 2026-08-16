@@ -123,6 +123,7 @@ export type AdminOrder = {
   notes?: string | null;
   personalAddress?: string | null;
   packerInitials?: string | null;
+  bagCount?: number | null;
   subtotal: number;
   discountTotal?: string | number;
   productDiscountTotal?: string | number;

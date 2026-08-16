@@ -28,6 +28,7 @@ import type { MenuProps } from "antd";
 import {
   DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
   FilePdfOutlined,
   FilterOutlined,
   PlusOutlined,
@@ -365,6 +366,7 @@ function OrderTable({
   selectedRowKeys,
   onSelectedRowKeysChange,
   onOpenPacking,
+  onEdit,
   onOpenWaste,
   onOpenAmend,
 }: {
@@ -378,6 +380,7 @@ function OrderTable({
   selectedRowKeys: React.Key[];
   onSelectedRowKeysChange: (keys: React.Key[]) => void;
   onOpenPacking: (order: AdminOrder) => void;
+  onEdit: (order: AdminOrder) => void;
   onOpenWaste: (order: AdminOrder, item: AdminOrderItem) => void;
   onOpenAmend: (order: AdminOrder, item: AdminOrderItem) => void;
 }) {
@@ -561,6 +564,14 @@ function OrderTable({
             v ? <Tag color="blue">{String(v).toUpperCase()}</Tag> : "—",
         },
         {
+          title: "Bags",
+          dataIndex: "bagCount",
+          key: "bagCount",
+          width: 80,
+          render: (value: any) =>
+            Number(value) > 0 ? <Tag color="cyan">{Number(value)}</Tag> : "—",
+        },
+        {
           title: "Packing",
           key: "packing",
           width: 150,
@@ -600,9 +611,19 @@ function OrderTable({
         {
           title: "",
           key: "actions",
-          width: 88,
+          width: 124,
           render: (_: any, row: AdminOrder) => (
             <Space size={4} wrap={false}>
+              {String(row.status).toUpperCase() !== "DELIVERED" ? (
+                <Tooltip title="Edit order">
+                  <Button
+                    aria-label="Edit order"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => onEdit(row)}
+                  />
+                </Tooltip>
+              ) : null}
               <Tooltip title="Download delivery note">
                 <Button
                   aria-label="Download delivery note"
@@ -635,6 +656,7 @@ function OrderTable({
       isMobile,
       onDelete,
       onDownloadDeliveryNote,
+      onEdit,
       onOpenPacking,
       onStatusUpdate,
     ],
@@ -855,6 +877,7 @@ export default function OrdersTab({
   >({});
   const [packingInitialsOpen, setPackingInitialsOpen] = useState(false);
   const [packerInitials, setPackerInitials] = useState("");
+  const [packingBagCount, setPackingBagCount] = useState<number | null>(null);
   const [savingPacking, setSavingPacking] = useState(false);
 
   const [wasteModalOpen, setWasteModalOpen] = useState(false);
@@ -870,11 +893,15 @@ export default function OrdersTab({
   const [savingAmend, setSavingAmend] = useState(false);
 
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<AdminOrder | null>(null);
   const [adminProducts, setAdminProducts] = useState<AdminCreateProduct[]>([]);
   const [savingCreateOrder, setSavingCreateOrder] = useState(false);
   const [createCustomerName, setCreateCustomerName] = useState("");
   const [createCustomerPhone, setCreateCustomerPhone] = useState("");
   const [createCustomerEmail, setCreateCustomerEmail] = useState("");
+  const [createBusinessName, setCreateBusinessName] = useState("");
+  const [createRequestedDeliveryDate, setCreateRequestedDeliveryDate] =
+    useState("");
   const [createPersonalAddress, setCreatePersonalAddress] = useState("");
   const [createPricingTier, setCreatePricingTier] = useState<
     "RETAIL" | "WHOLESALE"
@@ -1146,6 +1173,42 @@ export default function OrdersTab({
     };
   }, [displayOrders]);
 
+  function openOrderEditor(order: AdminOrder | null) {
+    setEditingOrder(order);
+    setCreateCustomerName(order?.customerName || "");
+    setCreateCustomerPhone(order?.customerPhone || "");
+    setCreateCustomerEmail(order?.customerEmail || "");
+    setCreateBusinessName(order?.businessName || "");
+    setCreateRequestedDeliveryDate(
+      order?.requestedDeliveryDate
+        ? dayjs(order.requestedDeliveryDate).format("YYYY-MM-DD")
+        : "",
+    );
+    setCreatePersonalAddress(order?.personalAddress || "");
+    setCreatePricingTier(
+      String(order?.pricingTier || "RETAIL").toUpperCase() === "WHOLESALE"
+        ? "WHOLESALE"
+        : "RETAIL",
+    );
+    setCreateDropoffLocationId(order?.dropoffLocationId || "");
+    setCreateDeliveryScheduleId(order?.deliveryScheduleId || "");
+    setCreateNotes(order?.notes || "");
+    setCreateItems(
+      order?.items?.length
+        ? order.items.map((item) => ({
+            productId: String(item.productId || ""),
+            qty: Math.max(1, Number(item.qty || 1)),
+          }))
+        : [{ productId: "", qty: 1 }],
+    );
+    setCreateOrderOpen(true);
+  }
+
+  function closeOrderEditor() {
+    setCreateOrderOpen(false);
+    setEditingOrder(null);
+  }
+
   async function handleDelete(orderId: string, orderNo: string) {
     try {
       await api.delete(`/api/admin/orders/${orderId}`);
@@ -1179,7 +1242,7 @@ export default function OrdersTab({
 
   async function handleStatusUpdate(orderId: string, status: string) {
     try {
-      await api.put(`/api/admin/orders/${orderId}/status`, {
+      const res = await api.put(`/api/admin/orders/${orderId}/status`, {
         status,
         sendWhatsApp,
       });
@@ -1191,6 +1254,13 @@ export default function OrdersTab({
       );
 
       message.success("Status updated");
+      if (sendWhatsApp && status === "DELIVERED" && res.data?.whatsapp?.sent === false) {
+        message.warning(
+          res.data.whatsapp.reason === "not_configured"
+            ? "WhatsApp is not configured on the server"
+            : "Status updated, but the WhatsApp message could not be sent",
+        );
+      }
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Status update failed");
     }
@@ -1310,6 +1380,9 @@ export default function OrdersTab({
 
     setPackingOrder(order);
     setPackingItems(state);
+    setPackingBagCount(
+      Number(order.bagCount) > 0 ? Number(order.bagCount) : null,
+    );
   }
 
   function getPackingValidation(order: AdminOrder | null) {
@@ -1318,6 +1391,10 @@ export default function OrdersTab({
     }
 
     const missing: string[] = [];
+
+    if (!packingBagCount || packingBagCount < 1) {
+      missing.push("Number of bags is required");
+    }
 
     for (const item of order.items || []) {
       const state = packingItems[item.id];
@@ -1377,6 +1454,11 @@ export default function OrdersTab({
       return;
     }
 
+    if (!packingBagCount || packingBagCount < 1) {
+      message.error("Enter the number of bags");
+      return;
+    }
+
     const validation = getPackingValidation(packingOrder);
 
     if (!validation.ok) {
@@ -1408,6 +1490,7 @@ export default function OrdersTab({
       const res = await api.put(`/api/admin/orders/${packingOrder.id}/pack`, {
         items: itemsPayload,
         packerInitials: initials,
+        bagCount: packingBagCount,
         sendWhatsApp,
       });
 
@@ -1422,9 +1505,17 @@ export default function OrdersTab({
       );
 
       message.success("Order packed and moved to Out for Delivery");
+      if (sendWhatsApp && res.data?.whatsapp?.sent === false) {
+        message.warning(
+          res.data.whatsapp.reason === "not_configured"
+            ? "WhatsApp is not configured on the server"
+            : "Order packed, but the WhatsApp message could not be sent",
+        );
+      }
 
       setPackingInitialsOpen(false);
       setPackerInitials("");
+      setPackingBagCount(null);
       setPackingOrder(null);
       setPackingItems({});
 
@@ -1445,7 +1536,7 @@ export default function OrdersTab({
     setBulkLoading(true);
 
     try {
-      await api.put("/api/admin/orders/status/bulk", {
+      const res = await api.put("/api/admin/orders/status/bulk", {
         ids: selectedRowKeys.map(String),
         status: bulkStatus,
         sendWhatsApp,
@@ -1460,6 +1551,14 @@ export default function OrdersTab({
       );
 
       message.success(`Updated ${selectedRowKeys.length} order(s)`);
+      const failedMessages = (res.data?.whatsappResults || []).filter(
+        (result: any) => result?.whatsapp?.sent === false,
+      );
+      if (failedMessages.length) {
+        message.warning(
+          `${failedMessages.length} WhatsApp message(s) could not be sent`,
+        );
+      }
       setSelectedRowKeys([]);
       setBulkOpen(false);
     } catch (e: any) {
@@ -1479,7 +1578,7 @@ export default function OrdersTab({
     setBulkLoading(true);
 
     try {
-      await api.put("/api/admin/orders/status/bulk", {
+      const res = await api.put("/api/admin/orders/status/bulk", {
         ids: selectedRowKeys.map(String),
         status: "DELIVERED",
         sendWhatsApp,
@@ -1496,6 +1595,14 @@ export default function OrdersTab({
       message.success(
         `Marked ${selectedRowKeys.length} order(s) delivered and moved to archive`,
       );
+      const failedMessages = (res.data?.whatsappResults || []).filter(
+        (result: any) => result?.whatsapp?.sent === false,
+      );
+      if (failedMessages.length) {
+        message.warning(
+          `${failedMessages.length} WhatsApp message(s) could not be sent`,
+        );
+      }
       setSelectedRowKeys([]);
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Status update failed");
@@ -1530,24 +1637,38 @@ export default function OrdersTab({
     setSavingCreateOrder(true);
 
     try {
-      await api.post("/api/admin/orders", {
+      const payload = {
         customerName: createCustomerName.trim(),
         customerPhone: createCustomerPhone.trim(),
         customerEmail: createCustomerEmail.trim(),
+        businessName: createBusinessName.trim(),
+        requestedDeliveryDate: createRequestedDeliveryDate,
         pricingTier: createPricingTier,
         dropoffLocationId: createDropoffLocationId,
         deliveryScheduleId: createDeliveryScheduleId,
         personalAddress: createPersonalAddress.trim(),
         notes: createNotes.trim(),
         items: validItems,
-      });
+      };
+      const res = editingOrder
+        ? await api.put(`/api/admin/orders/${editingOrder.id}`, payload)
+        : await api.post("/api/admin/orders", payload);
 
-      message.success("Order created");
+      message.success(editingOrder ? "Order updated" : "Order created");
 
-      setCreateOrderOpen(false);
+      if (editingOrder && res.data?.order) {
+        const updated = res.data.order as AdminOrder;
+        setDisplayOrders((prev) =>
+          prev.map((order) => (order.id === updated.id ? updated : order)),
+        );
+      }
+
+      closeOrderEditor();
       setCreateCustomerName("");
       setCreateCustomerPhone("");
       setCreateCustomerEmail("");
+      setCreateBusinessName("");
+      setCreateRequestedDeliveryDate("");
       setCreatePersonalAddress("");
       setCreatePricingTier("RETAIL");
       setCreateDropoffLocationId("");
@@ -1557,7 +1678,10 @@ export default function OrdersTab({
 
       onReload();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || "Failed to create order");
+      message.error(
+        e?.response?.data?.error ||
+          (editingOrder ? "Failed to update order" : "Failed to create order"),
+      );
     } finally {
       setSavingCreateOrder(false);
     }
@@ -1602,7 +1726,13 @@ export default function OrdersTab({
       a.localeCompare(b),
     );
 
-    const headers = ["Customer", "Phone", "Order No", ...productNames];
+    const headers = [
+      "Customer",
+      "Phone",
+      "Order No",
+      "No. of Bags",
+      ...productNames,
+    ];
     const rows: any[][] = [];
     const totals: Record<string, number> = {};
 
@@ -1615,6 +1745,7 @@ export default function OrdersTab({
         o.customerName ?? "",
         o.customerPhone ?? "",
         o.orderNo ?? "",
+        Number(o.bagCount) > 0 ? Number(o.bagCount) : "",
       ];
 
       const qtyByProduct: Record<string, number> = {};
@@ -1642,6 +1773,7 @@ export default function OrdersTab({
       "TOTALS",
       "",
       "",
+      "",
       ...productNames.map((p) => totals[p] || 0),
     ];
 
@@ -1650,6 +1782,7 @@ export default function OrdersTab({
       { width: 22 },
       { width: 16 },
       { width: 18 },
+      { width: 14 },
       ...productNames.map((p) => ({
         width: Math.max(12, Math.min(32, p.length + 2)),
       })),
@@ -1863,7 +1996,7 @@ export default function OrdersTab({
       key: "create-order",
       label: "Create order",
       icon: <PlusOutlined />,
-      onClick: () => setCreateOrderOpen(true),
+      onClick: () => openOrderEditor(null),
     },
     {
       key: "bulk",
@@ -1936,6 +2069,7 @@ export default function OrdersTab({
                 selectedRowKeys={selectedRowKeys}
                 onSelectedRowKeysChange={setSelectedRowKeys}
                 onOpenPacking={openPacking}
+                onEdit={openOrderEditor}
                 onOpenWaste={openWasteModal}
                 onOpenAmend={openAmendModal}
               />
@@ -1968,6 +2102,7 @@ export default function OrdersTab({
                   selectedRowKeys={selectedRowKeys}
                   onSelectedRowKeysChange={setSelectedRowKeys}
                   onOpenPacking={openPacking}
+                  onEdit={openOrderEditor}
                   onOpenWaste={openWasteModal}
                   onOpenAmend={openAmendModal}
                 />
@@ -2033,7 +2168,7 @@ export default function OrdersTab({
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => setCreateOrderOpen(true)}
+              onClick={() => openOrderEditor(null)}
             >
               Create Order
             </Button>
@@ -2252,7 +2387,7 @@ export default function OrdersTab({
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => setCreateOrderOpen(true)}
+              onClick={() => openOrderEditor(null)}
             />
 
             <Dropdown menu={{ items: moreMenuItems }} trigger={["click"]}>
@@ -2523,6 +2658,7 @@ export default function OrdersTab({
         onCancel={() => {
           setPackingOrder(null);
           setPackingItems({});
+          setPackingBagCount(null);
         }}
         onOk={savePacking}
         okText="Save Packing"
@@ -2550,7 +2686,7 @@ export default function OrdersTab({
                 display: "grid",
                 gridTemplateColumns: isMobile
                   ? "1fr"
-                  : "repeat(3, minmax(0, 1fr))",
+                  : "repeat(4, minmax(0, 1fr))",
                 gap: 12,
               }}
             >
@@ -2575,6 +2711,20 @@ export default function OrdersTab({
                 <div style={{ fontWeight: 800, marginTop: 4 }}>
                   {packingOrder.orderNo}
                 </div>
+              </Card>
+
+              <Card size="small">
+                <Text type="secondary">Number of bags</Text>
+                <InputNumber
+                  min={1}
+                  precision={0}
+                  value={packingBagCount}
+                  onChange={(value) =>
+                    setPackingBagCount(value === null ? null : Number(value))
+                  }
+                  placeholder="Bags"
+                  style={{ width: "100%", marginTop: 4 }}
+                />
               </Card>
             </div>
 
@@ -2752,11 +2902,11 @@ export default function OrdersTab({
       </Modal>
 
       <Modal
-        title="Create Order"
+        title={editingOrder ? `Edit Order — ${editingOrder.orderNo}` : "Create Order"}
         open={createOrderOpen}
-        onCancel={() => setCreateOrderOpen(false)}
+        onCancel={closeOrderEditor}
         onOk={createAdminOrder}
-        okText="Create Order"
+        okText={editingOrder ? "Save Changes" : "Create Order"}
         confirmLoading={savingCreateOrder}
         width={900}
       >
@@ -2764,8 +2914,16 @@ export default function OrdersTab({
           <Alert
             type="info"
             showIcon
-            message="Create an order for a customer"
-            description="Use this for phone, WhatsApp, or in-person orders that were not placed through the online shop. The order enters the same packing and delivery workflow."
+            message={
+              editingOrder
+                ? "Edit customer, delivery, or product details"
+                : "Create an order for a customer"
+            }
+            description={
+              editingOrder
+                ? "Changing products, quantities, or pricing will reset this order to Ready to Pack and clear its previous packing details."
+                : "Use this for phone, WhatsApp, or in-person orders that were not placed through the online shop. The order enters the same packing and delivery workflow."
+            }
           />
 
           <div
@@ -2799,6 +2957,24 @@ export default function OrdersTab({
                 value={createCustomerEmail}
                 onChange={(e) => setCreateCustomerEmail(e.target.value)}
                 placeholder="Optional"
+              />
+            </div>
+
+            <div>
+              <Text type="secondary">Business name</Text>
+              <Input
+                value={createBusinessName}
+                onChange={(e) => setCreateBusinessName(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div>
+              <Text type="secondary">Requested delivery date</Text>
+              <Input
+                type="date"
+                value={createRequestedDeliveryDate}
+                onChange={(e) => setCreateRequestedDeliveryDate(e.target.value)}
               />
             </div>
 
