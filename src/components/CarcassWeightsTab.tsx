@@ -651,12 +651,26 @@ export default function CarcassWeightsTab({
     }
   }
 
-  async function deleteRecord(id: string) {
+  async function deleteRecord(id: string, force = false) {
     try {
-      await api.delete(`/api/admin/carcass-weights/wet/${id}`);
-      message.success("Record deleted");
+      await api.delete(`/api/admin/carcass-weights/wet/${id}`, {
+        params: force ? { force: true } : undefined,
+      });
+      message.success(force ? "Carcass and processing history deleted" : "Record deleted");
       onReload();
     } catch (error: any) {
+      if (!force && error?.response?.data?.canForceDelete) {
+        Modal.confirm({
+          title: "Force delete this carcass?",
+          content:
+            "This permanently deletes the carcass, all of its processing history and recorded processing sales. Any remaining stock created from it will be removed without taking product stock below zero.",
+          okText: "Force Delete",
+          okButtonProps: { danger: true },
+          cancelText: "Cancel",
+          onOk: () => deleteRecord(id, true),
+        });
+        return;
+      }
       message.error(error?.response?.data?.error || "Could not delete record");
     }
   }

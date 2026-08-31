@@ -351,7 +351,7 @@ export default function ProductsTab({
       retailPrice: values.retailPrice,
       wholesalePrice: values.wholesalePrice,
       costPrice: values.costPrice,
-      stockQty: values.isForProcessing ? 0 : values.stockQty,
+      stockQty: values.stockQty,
       isActive: values.isActive ?? true,
       isFifthQuarter: values.isFifthQuarter ?? false,
       isForProcessing: values.isForProcessing ?? false,
@@ -684,6 +684,7 @@ export default function ProductsTab({
       render: (_: any, p: AdminProduct) =>
         p.isForProcessing ? (
           <div style={{ display: "grid", gap: 2 }}>
+            <Text>{p.stockQty} items</Text>
             <Text>{Number(p.processingAvailableWeightKg || 0).toFixed(2)} kg</Text>
             <Text type="secondary">available to process</Text>
           </div>
@@ -919,13 +920,9 @@ export default function ProductsTab({
             name="isForProcessing"
             label="For processing only"
             valuePropName="checked"
-            extra="Included in carcass yield, but hidden from the shop and not added to sellable packet stock."
+            extra="Included in carcass yield and hidden from the shop. Its item count is tracked separately from the weight available to process."
           >
-            <Switch
-              onChange={(checked) => {
-                if (checked) productForm.setFieldValue("stockQty", 0);
-              }}
-            />
+            <Switch />
           </Form.Item>
 
           <Form.Item name="cutType" label="Cut type (optional)">
@@ -1021,12 +1018,16 @@ export default function ProductsTab({
 
           <Form.Item
             name="stockQty"
-            label="Stock quantity"
+            label={isForProcessing ? "Processing item count" : "Stock quantity"}
             rules={[{ required: true }]}
+            extra={
+              isForProcessing
+                ? "Number of processing items currently on hand. Processing weight is tracked separately."
+                : undefined
+            }
           >
             <InputNumber
               min={0}
-              disabled={Boolean(isForProcessing)}
               style={{ width: "100%" }}
             />
           </Form.Item>
