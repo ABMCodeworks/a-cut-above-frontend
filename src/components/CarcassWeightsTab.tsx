@@ -23,6 +23,11 @@ import type { AdminPermission } from "../pages/admin/AdminDashboardPage";
 const { Text } = Typography;
 
 type AnimalKind = "beef" | "pig" | "lamb" | "chicken" | "carcass";
+type BeefConfiguration =
+  | "FULL_CARCASS"
+  | "SIDE"
+  | "TWO_HINDQUARTERS"
+  | "TWO_FOREQUARTERS";
 type SourcePart =
   | "HINDQUARTER_1"
   | "HINDQUARTER_2"
@@ -38,6 +43,34 @@ const partLabels: Record<SourcePart, string> = {
   FOREQUARTER_2: "Forequarter 2",
   WHOLE_CARCASS: "Whole carcass",
   WHOLE_BATCH: "Whole chicken batch",
+};
+
+const beefQuarterFields = [
+  ["hindquarterWeight1Kg", "Hindquarter 1", "HINDQUARTER_1"],
+  ["hindquarterWeight2Kg", "Hindquarter 2", "HINDQUARTER_2"],
+  ["forequarterWeight1Kg", "Forequarter 1", "FOREQUARTER_1"],
+  ["forequarterWeight2Kg", "Forequarter 2", "FOREQUARTER_2"],
+] as const;
+
+const beefDryQuarterFields = [
+  ["hindquarterDryWeight1Kg", "Hindquarter 1", "HINDQUARTER_1", "hindquarterWeight1Kg"],
+  ["hindquarterDryWeight2Kg", "Hindquarter 2", "HINDQUARTER_2", "hindquarterWeight2Kg"],
+  ["forequarterDryWeight1Kg", "Forequarter 1", "FOREQUARTER_1", "forequarterWeight1Kg"],
+  ["forequarterDryWeight2Kg", "Forequarter 2", "FOREQUARTER_2", "forequarterWeight2Kg"],
+] as const;
+
+const beefConfigurationParts: Record<BeefConfiguration, SourcePart[]> = {
+  FULL_CARCASS: ["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"],
+  SIDE: ["HINDQUARTER_1", "FOREQUARTER_1"],
+  TWO_HINDQUARTERS: ["HINDQUARTER_1", "HINDQUARTER_2"],
+  TWO_FOREQUARTERS: ["FOREQUARTER_1", "FOREQUARTER_2"],
+};
+
+const beefConfigurationLabels: Record<BeefConfiguration, string> = {
+  FULL_CARCASS: "Full carcass (2 hindquarters + 2 forequarters)",
+  SIDE: "One side (1 hindquarter + 1 forequarter)",
+  TWO_HINDQUARTERS: "Two hindquarters",
+  TWO_FOREQUARTERS: "Two forequarters",
 };
 
 type ProductOption = {
@@ -149,6 +182,7 @@ type WetForm = {
   animalId: string;
   liveWeightDate: dayjs.Dayjs;
   liveWeightKg: number;
+  beefConfiguration: BeefConfiguration;
   noHq: number;
   batchQuantity?: number | null;
   totalCarcassWeightKg: number;
@@ -255,6 +289,31 @@ function sourceWeight(record: CarcassBatchRecord, part: SourcePart) {
   return weights[part];
 }
 
+function wetQuarterWeight(record: CarcassBatchRecord, part: SourcePart) {
+  const weights: Partial<Record<SourcePart, number>> = {
+    HINDQUARTER_1: n(record.hindquarterWeight1Kg),
+    HINDQUARTER_2: n(record.hindquarterWeight2Kg),
+    FOREQUARTER_1: n(record.forequarterWeight1Kg),
+    FOREQUARTER_2: n(record.forequarterWeight2Kg),
+  };
+  return weights[part] || 0;
+}
+
+function beefParts(record: CarcassBatchRecord) {
+  return (beefConfigurationParts.FULL_CARCASS as SourcePart[]).filter(
+    (part) => wetQuarterWeight(record, part) > 0,
+  );
+}
+
+function inferBeefConfiguration(record: CarcassBatchRecord): BeefConfiguration {
+  const present = new Set(beefParts(record));
+  for (const configuration of Object.keys(beefConfigurationParts) as BeefConfiguration[]) {
+    const parts = beefConfigurationParts[configuration];
+    if (parts.length === present.size && parts.every((part) => present.has(part))) return configuration;
+  }
+  return "FULL_CARCASS";
+}
+
 export default function CarcassWeightsTab({
   loading,
   records,
@@ -280,6 +339,7 @@ export default function CarcassWeightsTab({
   const [editing, setEditing] = useState<CarcassBatchRecord | null>(null);
   const [target, setTarget] = useState<CarcassBatchRecord | null>(null);
   const [processingSourceOutput, setProcessingSourceOutput] = useState<Output | null>(null);
+  const [editingProcessingBatch, setEditingProcessingBatch] = useState<ProcessingBatch | null>(null);
   const [processingOutputForSale, setProcessingOutputForSale] = useState<Output | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -288,6 +348,7 @@ export default function CarcassWeightsTab({
   const selectedCategoryId = Form.useWatch("meatCategoryId", wetForm);
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId);
   const selectedKind = kindOf(selectedCategory);
+  const beefConfiguration = Form.useWatch("beefConfiguration", wetForm) || "FULL_CARCASS";
   const wetValues = Form.useWatch([], wetForm);
   const fifthItems = Form.useWatch("fifthQuarterItems", wetForm) || [];
   const dryValues = Form.useWatch([], dryForm);
@@ -308,7 +369,7 @@ export default function CarcassWeightsTab({
   const processLoss = pct(processingInput, outputPreview);
 
   const sourceOptions = target && kindOf(target.meatCategory) === "beef"
-    ? (["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"] as SourcePart[])
+    ? beefParts(target)
     : target && kindOf(target.meatCategory) === "chicken"
       ? (["WHOLE_BATCH"] as SourcePart[])
       : (["WHOLE_CARCASS"] as SourcePart[]);
@@ -376,6 +437,7 @@ export default function CarcassWeightsTab({
         animalId: "",
         liveWeightDate: dayjs(),
         liveWeightKg: 0,
+        beefConfiguration: "FULL_CARCASS",
         noHq: 2,
         batchQuantity: null,
         totalCarcassWeightKg: 0,
@@ -405,6 +467,7 @@ export default function CarcassWeightsTab({
         animalId: record.animalId,
         liveWeightDate: dayjs(record.liveWeightDate || record.weighedAt),
         liveWeightKg: n(record.liveWeightKg),
+        beefConfiguration: inferBeefConfiguration(record),
         noHq: n(record.noHq),
         batchQuantity: record.batchQuantity,
         totalCarcassWeightKg: n(record.totalCarcassWeightKg),
@@ -427,8 +490,21 @@ export default function CarcassWeightsTab({
     const values = await wetForm.validateFields();
     setSaving(true);
     try {
+      const selectedParts = new Set(beefConfigurationParts[values.beefConfiguration || "FULL_CARCASS"]);
+      const quarterWeights = Object.fromEntries(
+        beefQuarterFields.map(([name, , part]) => [name, selectedParts.has(part) ? n(values[name]) : 0]),
+      );
       const payload = {
         ...values,
+        ...(selectedKind === "beef" ? quarterWeights : {}),
+        noHq:
+          selectedKind === "beef"
+            ? selectedParts.has("HINDQUARTER_2")
+              ? 2
+              : selectedParts.has("HINDQUARTER_1")
+                ? 1
+                : 0
+            : 0,
         liveWeightDate: values.liveWeightDate.toISOString(),
         weighedAt: values.liveWeightDate.toISOString(),
         batchQuantity: values.batchQuantity || null,
@@ -491,9 +567,10 @@ export default function CarcassWeightsTab({
       await loadLookups(record);
       setTarget(record);
       setProcessingSourceOutput(null);
+      setEditingProcessingBatch(null);
       const kind = kindOf(record.meatCategory);
       const parts: SourcePart[] = kind === "beef"
-        ? ["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"]
+        ? beefParts(record)
         : kind === "chicken"
           ? ["WHOLE_BATCH"]
           : ["WHOLE_CARCASS"];
@@ -521,6 +598,7 @@ export default function CarcassWeightsTab({
       await loadLookups(record);
       setTarget(record);
       setProcessingSourceOutput(output);
+      setEditingProcessingBatch(null);
       processingForm.resetFields();
       processingForm.setFieldsValue({
         processedAt: dayjs(),
@@ -536,6 +614,33 @@ export default function CarcassWeightsTab({
     }
   }
 
+  async function openEditProcessing(record: CarcassBatchRecord, batch: ProcessingBatch) {
+    setSaving(true);
+    try {
+      await loadLookups(record);
+      setTarget(record);
+      setEditingProcessingBatch(batch);
+      setProcessingSourceOutput(batch.sourceOutput || null);
+      processingForm.resetFields();
+      processingForm.setFieldsValue({
+        sourcePart: batch.sourcePart || undefined,
+        processedAt: dayjs(batch.processedAt),
+        inputWeightKg: n(batch.inputWeightKg),
+        notes: batch.notes || "",
+        outputs: (batch.outputs || []).map((output) => ({
+          productId: output.productId,
+          totalWeightKg: n(output.totalWeightKg),
+          packetCount: output.packetCount,
+        })),
+      });
+      setProcessingOpen(true);
+    } catch (error: any) {
+      message.error(error?.response?.data?.error || "Could not load processing batch");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveProcessing() {
     if (!target) return;
     const values = await processingForm.validateFields();
@@ -545,16 +650,22 @@ export default function CarcassWeightsTab({
     }
     setSaving(true);
     try {
-      await api.post("/api/admin/carcass-weights/process", {
+      const payload = {
         ...values,
         ...(processingSourceOutput
           ? { sourceOutputId: processingSourceOutput.id }
           : { carcassBatchId: target.id, sourcePart: values.sourcePart }),
         processedAt: values.processedAt.toISOString(),
-      });
-      message.success("Finished products added to stock");
+      };
+      if (editingProcessingBatch) {
+        await api.put(`/api/admin/carcass-weights/process/${editingProcessingBatch.id}`, payload);
+      } else {
+        await api.post("/api/admin/carcass-weights/process", payload);
+      }
+      message.success(editingProcessingBatch ? "Processing batch updated" : "Finished products added to stock");
       setProcessingOpen(false);
       setProcessingSourceOutput(null);
+      setEditingProcessingBatch(null);
       onReload();
     } catch (error: any) {
       message.error(error?.response?.data?.error || "Processing failed");
@@ -565,7 +676,7 @@ export default function CarcassWeightsTab({
 
   function openSale(record: CarcassBatchRecord) {
     setTarget(record);
-    const available = (["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"] as SourcePart[]).find((part) => availableFor(record, part) > 0.005);
+    const available = beefParts(record).find((part) => availableFor(record, part) > 0.005);
     saleForm.resetFields();
     saleForm.setFieldsValue({ sourcePart: available || "HINDQUARTER_1", soldAt: dayjs(), buyer: "", salePrice: null, notes: "" });
     setSaleOpen(true);
@@ -621,12 +732,26 @@ export default function CarcassWeightsTab({
     }
   }
 
-  async function reverseProcessing(id: string) {
+  async function reverseProcessing(id: string, force = false) {
     try {
-      await api.delete(`/api/admin/carcass-weights/process/${id}`);
-      message.success("Processing reversed and stock removed");
+      await api.delete(`/api/admin/carcass-weights/process/${id}`, {
+        params: force ? { force: true } : undefined,
+      });
+      message.success(force ? "Processing force-reversed and remaining stock removed" : "Processing reversed and stock removed");
       onReload();
     } catch (error: any) {
+      if (!force && error?.response?.data?.canForceReverse) {
+        Modal.confirm({
+          title: "Force reverse this processing batch?",
+          content:
+            "Some produced packets have already left stock. This will delete the processing record and remove any remaining packets without taking stock below zero.",
+          okText: "Force Reverse",
+          okButtonProps: { danger: true },
+          cancelText: "Cancel",
+          onOk: () => reverseProcessing(id, true),
+        });
+        return;
+      }
       message.error(error?.response?.data?.error || "Could not reverse processing");
     }
   }
@@ -739,7 +864,12 @@ export default function CarcassWeightsTab({
       ),
     },
     { title: "Animal", key: "animal", render: (_: unknown, record: CarcassBatchRecord) => record.meatCategory?.name || "—" },
-    { title: "Quantity", key: "quantity", width: 100, render: (_: unknown, record: CarcassBatchRecord) => kindOf(record.meatCategory) === "chicken" ? record.batchQuantity || "—" : "1" },
+    { title: "Quantity / form", key: "quantity", width: 170, render: (_: unknown, record: CarcassBatchRecord) => {
+      const kind = kindOf(record.meatCategory);
+      if (kind === "chicken") return record.batchQuantity || "—";
+      if (kind === "beef") return beefConfigurationLabels[inferBeefConfiguration(record)];
+      return "1 carcass";
+    } },
     { title: "Wet carcass / batch", key: "wet", width: 150, render: (_: unknown, record: CarcassBatchRecord) => kg(record.totalCarcassWeightKg) },
     { title: "Dry weight", key: "dry", width: 130, render: (_: unknown, record: CarcassBatchRecord) => dryTotal(record) > 0 ? kg(dryTotal(record)) : <Text type="secondary">—</Text> },
     { title: "Shrinkage", key: "shrinkage", width: 110, render: (_: unknown, record: CarcassBatchRecord) => shrinkage(record) === null ? <Text type="secondary">—</Text> : <Tag color="blue">{pctText(shrinkage(record))}</Tag> },
@@ -787,7 +917,7 @@ export default function CarcassWeightsTab({
                   <Card size="small"><Text type="secondary">Live weight</Text><div><b>{kg(record.liveWeightKg)}</b></div></Card>
                   <Card size="small"><Text type="secondary">Wet carcass / batch</Text><div><b>{kg(record.totalCarcassWeightKg)}</b></div></Card>
                   {kind === "chicken" ? <Card size="small"><Text type="secondary">Chickens in batch</Text><div><b>{record.batchQuantity || "—"}</b></div></Card> : null}
-                  {kind === "beef" ? (["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"] as SourcePart[]).map((part) => {
+                  {kind === "beef" ? beefParts(record).map((part) => {
                     const wetMap: Record<string, unknown> = { HINDQUARTER_1: record.hindquarterWeight1Kg, HINDQUARTER_2: record.hindquarterWeight2Kg, FOREQUARTER_1: record.forequarterWeight1Kg, FOREQUARTER_2: record.forequarterWeight2Kg };
                     return <Card size="small" key={part}><Text type="secondary">{partLabels[part]}</Text><div><b>Wet {kg(wetMap[part])}</b></div><div>Dry {sourceWeight(record, part) ? kg(sourceWeight(record, part)) : "—"}</div><div>Shrinkage {pctText(sourceWeight(record, part) ? pct(wetMap[part], sourceWeight(record, part)) : null)}</div></Card>;
                   }) : null}
@@ -801,7 +931,13 @@ export default function CarcassWeightsTab({
                   { title: "Notes", dataIndex: "notes", render: (value: string) => value || "—" },
                 ]} /></div> : null}
 
-                <div><Text strong>Processing History</Text><Table size="small" pagination={false} rowKey="id" dataSource={processingHistory(record)} rowClassName={(batch: ProcessingBatch) => Math.abs(cumulativeProcessingLoss(record, batch) || 0) > 0.01 ? "aca-processing-loss-row" : ""} locale={{ emptyText: "No products processed yet" }} columns={[
+                <div><Text strong>Processing History</Text><Table size="small" pagination={false} rowKey="id" dataSource={processingHistory(record)} rowClassName={(batch: ProcessingBatch) => Math.abs(cumulativeProcessingLoss(record, batch) || 0) > 0.01 ? "aca-processing-loss-row" : ""} locale={{ emptyText: "No products processed yet" }} expandable={{ expandedRowRender: (batch: ProcessingBatch) => <div style={{ display: "grid", gap: 10 }}><Text><b>Notes:</b> {batch.notes || "—"}</Text><Table size="small" pagination={false} rowKey="id" dataSource={batch.outputs || []} columns={[
+                  { title: "Product", render: (_: unknown, output: Output) => output.product?.name || "—" },
+                  { title: "Type", render: (_: unknown, output: Output) => output.product?.isForProcessing ? <Tag color="orange">Process further</Tag> : <Tag color="green">Sellable stock</Tag> },
+                  { title: "Processed weight", dataIndex: "totalWeightKg", render: kg },
+                  { title: "Packets", dataIndex: "packetCount" },
+                  { title: "Status", render: (_: unknown, output: Output) => output.wholeSale ? "Sold whole" : (output.downstreamBatches || []).length ? "Processed further" : "Available" },
+                ]} /></div> }} columns={[
                   { title: "Source", render: (_: unknown, batch: ProcessingBatch) => batch.sourceOutput?.product?.name || (batch.sourcePart ? partLabels[batch.sourcePart] : "Legacy source") },
                   { title: "Date", dataIndex: "processedAt", render: (value: string) => dayjs(value).format("D MMM YYYY") },
                   { title: "Source weight", dataIndex: "inputWeightKg", render: kg },
@@ -813,7 +949,7 @@ export default function CarcassWeightsTab({
                     const loss = cumulativeProcessingLoss(record, batch);
                     return <Tag color={Math.abs(loss || 0) > 0.01 ? "red" : "green"}>{pctText(loss)}</Tag>;
                   } },
-                  { title: "", render: (_: unknown, batch: ProcessingBatch) => canManage ? <Popconfirm title="Reverse processing and remove its stock?" onConfirm={() => reverseProcessing(batch.id)}><Button danger size="small">Reverse</Button></Popconfirm> : null },
+                  { title: "", render: (_: unknown, batch: ProcessingBatch) => canManage ? <Space size={6}><Button size="small" onClick={() => openEditProcessing(record, batch)}>Edit</Button><Popconfirm title="Reverse processing and remove its stock?" onConfirm={() => reverseProcessing(batch.id)}><Button danger size="small">Reverse</Button></Popconfirm></Space> : null },
                 ]} /></div>
 
                 {kind === "beef" ? <div><Text strong>Whole Quarter Sales (not shop stock)</Text><Table size="small" pagination={false} rowKey="id" dataSource={record.quarterSales || []} locale={{ emptyText: "No whole quarters sold" }} columns={[
@@ -834,17 +970,17 @@ export default function CarcassWeightsTab({
         <Form form={wetForm} layout="vertical">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
             <Form.Item name="meatCategoryId" label="Animal" rules={[{ required: true }]}><Select disabled={!!editing} options={categories.map((category) => ({ value: category.id, label: category.name }))} onChange={() => wetForm.setFieldValue("fifthQuarterItems", [])} /></Form.Item>
-            <Form.Item name="animalId" label={selectedKind === "chicken" ? "Batch Number" : "Tag Number"} rules={[{ required: true }]}><Input disabled={!!editing} /></Form.Item>
-            <Form.Item name="liveWeightDate" label="Weight Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item name="liveWeightKg" label={selectedKind === "chicken" ? "Live Batch Weight (kg)" : "Live Weight (kg)"} rules={[{ required: true }]}><InputNumber min={0} step={0.1} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="animalId" label={selectedKind === "chicken" ? "Batch Number" : selectedKind === "beef" ? "Tag / Carcass Reference" : "Tag Number"} rules={[{ required: true }]}><Input disabled={!!editing} /></Form.Item>
+            <Form.Item name="liveWeightDate" label={selectedKind === "beef" ? "Slaughter / Received Date" : "Weight Date"} rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="liveWeightKg" label={selectedKind === "chicken" ? "Live Batch Weight (kg)" : selectedKind === "beef" ? "Live Weight (kg, use 0 for bought-in meat)" : "Live Weight (kg)"} rules={[{ required: true }]}><InputNumber min={0} step={0.1} style={{ width: "100%" }} /></Form.Item>
             {selectedKind === "chicken" ? <Form.Item name="batchQuantity" label="Number of Chickens" rules={[{ required: true }]}><InputNumber min={1} step={1} style={{ width: "100%" }} /></Form.Item> : null}
-            {selectedKind === "beef" ? <Form.Item name="noHq" label="No. HQ" rules={[{ required: true }]}><InputNumber min={0} step={1} style={{ width: "100%" }} /></Form.Item> : null}
+            {selectedKind === "beef" ? <Form.Item name="beefConfiguration" label="Carcass Form" rules={[{ required: true }]}><Select options={(Object.keys(beefConfigurationLabels) as BeefConfiguration[]).map((value) => ({ value, label: beefConfigurationLabels[value] }))} onChange={(configuration: BeefConfiguration) => { const active = new Set(beefConfigurationParts[configuration]); const cleared = Object.fromEntries(beefQuarterFields.filter(([, , part]) => !active.has(part)).map(([name]) => [name, 0])); wetForm.setFieldsValue(cleared); }} /></Form.Item> : null}
           </div>
 
           {selectedKind === "beef" ? <>
             <Divider orientation="left">Wet Quarter Weights</Divider>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              {([['hindquarterWeight1Kg', 'Hindquarter 1'], ['hindquarterWeight2Kg', 'Hindquarter 2'], ['forequarterWeight1Kg', 'Forequarter 1'], ['forequarterWeight2Kg', 'Forequarter 2']] as const).map(([name, label]) => <Form.Item key={name} name={name} label={`${label} Wet Weight (kg)`} rules={[{ required: true }]}><InputNumber min={0} step={0.1} style={{ width: "100%" }} /></Form.Item>)}
+              {beefQuarterFields.filter(([, , part]) => beefConfigurationParts[beefConfiguration].includes(part)).map(([name, label]) => <Form.Item key={name} name={name} label={`${label} Wet Weight (kg)`} rules={[{ required: true, message: `Enter the ${label.toLowerCase()} weight` }]}><InputNumber min={0.01} step={0.1} style={{ width: "100%" }} /></Form.Item>)}
             </div>
           </> : <Form.Item name="totalCarcassWeightKg" label={selectedKind === "chicken" ? "Whole Portioned Batch Starting Weight (kg)" : "Whole Carcass Weight (kg)"} rules={[{ required: true }]}><InputNumber min={0.01} step={0.1} style={{ width: "100%" }} /></Form.Item>}
 
@@ -877,21 +1013,21 @@ export default function CarcassWeightsTab({
           <Form.Item name="weighedAt" label="Dry Weight Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
           {target && kindOf(target.meatCategory) === "beef" ? <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              <Form.Item name="hindquarterDryDate" label="Hindquarter Dry Date"><DatePicker style={{ width: "100%" }} /></Form.Item>
-              <Form.Item name="forequarterDryDate" label="Forequarter Dry Date"><DatePicker style={{ width: "100%" }} /></Form.Item>
-              {([['hindquarterDryWeight1Kg', 'Hindquarter 1', target.hindquarterWeight1Kg], ['hindquarterDryWeight2Kg', 'Hindquarter 2', target.hindquarterWeight2Kg], ['forequarterDryWeight1Kg', 'Forequarter 1', target.forequarterWeight1Kg], ['forequarterDryWeight2Kg', 'Forequarter 2', target.forequarterWeight2Kg]] as const).map(([name, label, wet]) => <Form.Item key={name} name={name} label={`${label} Dry Weight (wet: ${kg(wet)})`} rules={[{ required: true }]}><InputNumber min={0.01} max={n(wet)} step={0.1} style={{ width: "100%" }} /></Form.Item>)}
+              {beefParts(target).some((part) => part.startsWith("HINDQUARTER")) ? <Form.Item name="hindquarterDryDate" label="Hindquarter Dry Date"><DatePicker style={{ width: "100%" }} /></Form.Item> : null}
+              {beefParts(target).some((part) => part.startsWith("FOREQUARTER")) ? <Form.Item name="forequarterDryDate" label="Forequarter Dry Date"><DatePicker style={{ width: "100%" }} /></Form.Item> : null}
+              {beefDryQuarterFields.filter(([, , part]) => beefParts(target).includes(part)).map(([name, label, , wetName]) => { const wet = target[wetName]; return <Form.Item key={name} name={name} label={`${label} Dry Weight (wet: ${kg(wet)})`} rules={[{ required: true }]}><InputNumber min={0.01} max={n(wet)} step={0.1} style={{ width: "100%" }} /></Form.Item>; })}
             </div>
           </> : <Form.Item name="totalDryWeightKg" label={`Dry Carcass Weight (wet: ${kg(target?.totalCarcassWeightKg)})`} rules={[{ required: true }]}><InputNumber min={0.01} max={n(target?.totalCarcassWeightKg)} step={0.1} style={{ width: "100%" }} /></Form.Item>}
           <Card size="small"><Space size="large"><Text><b>Dry total:</b> {kg(dryPreview)}</Text><Text><b>Shrinkage:</b> {pctText(pct(target?.totalCarcassWeightKg, dryPreview))}</Text></Space></Card>
         </Form>
       </Modal>
 
-      <Modal title={`${processingSourceOutput ? `Process ${processingSourceOutput.product?.name || "Processing Product"} Further` : "Process Products"} — ${target?.animalId || ""}`} open={processingOpen} onCancel={() => { setProcessingOpen(false); setProcessingSourceOutput(null); }} onOk={saveProcessing} confirmLoading={saving} okText="Process and Add Stock" width={900}>
+      <Modal title={`${editingProcessingBatch ? "Edit Processing Batch" : processingSourceOutput ? `Process ${processingSourceOutput.product?.name || "Processing Product"} Further` : "Process Products"} — ${target?.animalId || ""}`} open={processingOpen} onCancel={() => { setProcessingOpen(false); setProcessingSourceOutput(null); setEditingProcessingBatch(null); }} onOk={saveProcessing} confirmLoading={saving} okText={editingProcessingBatch ? "Save Changes" : "Process and Add Stock"} width={900}>
         <Form form={processingForm} layout="vertical">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-            {processingSourceOutput ? <Card size="small"><Text type="secondary">Processing product source</Text><div><b>{processingSourceOutput.product?.name}</b></div><div>{kg(availableOutputWeight(processingSourceOutput))} available</div></Card> : <Form.Item name="sourcePart" label={target && kindOf(target.meatCategory) === "beef" ? "Quarter Cut From" : "Processing Source"} rules={[{ required: true }]}><Select options={target ? sourceOptions.map((part) => { const kind = kindOf(target.meatCategory); const basis = kind === "beef" || kind === "lamb" || kind === "carcass" ? "dry weight" : "starting weight"; return { value: part, label: `${partLabels[part]} — ${kg(availableFor(target, part))} remaining from ${kg(sourceWeight(target, part))} ${basis}`, disabled: availableFor(target, part) <= 0.005 }; }) : []} onChange={(part: SourcePart) => { if (target) processingForm.setFieldValue("inputWeightKg", availableFor(target, part)); }} /></Form.Item>}
+            {processingSourceOutput ? <Card size="small"><Text type="secondary">Processing product source</Text><div><b>{processingSourceOutput.product?.name}</b></div><div>{editingProcessingBatch ? `${kg(editingProcessingBatch.inputWeightKg)} used` : `${kg(availableOutputWeight(processingSourceOutput))} available`}</div></Card> : <Form.Item name="sourcePart" label={target && kindOf(target.meatCategory) === "beef" ? "Quarter Cut From" : "Processing Source"} rules={[{ required: true }]}><Select disabled={Boolean(editingProcessingBatch)} options={target ? sourceOptions.map((part) => { const kind = kindOf(target.meatCategory); const basis = kind === "beef" || kind === "lamb" || kind === "carcass" ? "dry weight" : "starting weight"; return { value: part, label: `${partLabels[part]} — ${kg(availableFor(target, part))} remaining from ${kg(sourceWeight(target, part))} ${basis}`, disabled: availableFor(target, part) <= 0.005 }; }) : []} onChange={(part: SourcePart) => { if (target) processingForm.setFieldValue("inputWeightKg", availableFor(target, part)); }} /></Form.Item>}
             <Form.Item name="processedAt" label="Processing Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item name="inputWeightKg" label={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Remaining Quarter Dry Weight (kg)" : "Source Weight Used (kg)"} rules={[{ required: true }]} extra={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Locked to the selected quarter dry weight minus products already processed from it." : undefined}><InputNumber min={0.01} max={processingSourceOutput ? availableOutputWeight(processingSourceOutput) : target && selectedSource ? availableFor(target, selectedSource) : undefined} step={0.1} disabled={!processingSourceOutput} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="inputWeightKg" label={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Remaining Quarter Dry Weight (kg)" : "Source Weight Used (kg)"} rules={[{ required: true }]} extra={editingProcessingBatch ? "The original processing source and input weight stay locked; edit the resulting products below." : target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Locked to the selected quarter dry weight minus products already processed from it." : undefined}><InputNumber min={0.01} max={processingSourceOutput ? availableOutputWeight(processingSourceOutput) : target && selectedSource ? availableFor(target, selectedSource) : undefined} step={0.1} disabled={Boolean(editingProcessingBatch) || !processingSourceOutput} style={{ width: "100%" }} /></Form.Item>
           </div>
           <Divider orientation="left">Products Cut From This Source</Divider>
           <Form.List name="outputs">{(fields, { add, remove }) => <div style={{ display: "grid", gap: 10 }}>
@@ -913,7 +1049,7 @@ export default function CarcassWeightsTab({
 
       <Modal title={`Sell Whole Beef Quarter — ${target?.animalId || ""}`} open={saleOpen} onCancel={() => setSaleOpen(false)} onOk={saveSale} confirmLoading={saving} okText="Record Sale" width={650}>
         <Form form={saleForm} layout="vertical">
-          <Form.Item name="sourcePart" label="Quarter" rules={[{ required: true }]}><Select options={target ? (["HINDQUARTER_1", "HINDQUARTER_2", "FOREQUARTER_1", "FOREQUARTER_2"] as SourcePart[]).map((part) => ({ value: part, label: `${partLabels[part]} — ${kg(sourceWeight(target, part))}`, disabled: availableFor(target, part) <= 0.005 })) : []} /></Form.Item>
+          <Form.Item name="sourcePart" label="Quarter" rules={[{ required: true }]}><Select options={target ? beefParts(target).map((part) => ({ value: part, label: `${partLabels[part]} — ${kg(sourceWeight(target, part))}`, disabled: availableFor(target, part) <= 0.005 })) : []} /></Form.Item>
           <Form.Item name="soldAt" label="Sale Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
           <Form.Item name="buyer" label="Buyer"><Input /></Form.Item>
           <Form.Item name="salePrice" label="Sale Price ($)"><InputNumber min={0} step={0.01} style={{ width: "100%" }} /></Form.Item>

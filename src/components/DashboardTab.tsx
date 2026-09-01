@@ -79,6 +79,14 @@ type TopCustomerRow = {
   profit: number;
 };
 
+type StockValueRow = {
+  key: string;
+  categoryName: string;
+  stockQty: number;
+  costValue: number;
+  retailValue: number;
+};
+
 export default function DashboardTab({
   loading,
   orders,
@@ -219,6 +227,51 @@ export default function DashboardTab({
       avgLossPct,
     };
   }, [carcassWeights]);
+
+  const stockValuation = useMemo(() => {
+    const rows = new Map<string, StockValueRow & { sortOrder: number }>();
+
+    for (const product of products || []) {
+      const stockQty = Math.max(0, n(product.stockQty));
+      if (stockQty <= 0) continue;
+
+      const categoryName = product.category?.name || "Unassigned";
+      const categoryKey = product.category?.id || "unassigned";
+      const unit = String(product.unit || "").toLowerCase();
+      const avgWeightKg = n(product.avgWeightG) > 0 ? n(product.avgWeightG) / 1000 : 1;
+      const stockUnits =
+        product.isForProcessing && unit === "kg" && n(product.processingStockWeightKg) > 0
+          ? n(product.processingStockWeightKg)
+          : stockQty * (unit === "kg" ? avgWeightKg : 1);
+      const row = rows.get(categoryKey) || {
+        key: categoryKey,
+        categoryName,
+        stockQty: 0,
+        costValue: 0,
+        retailValue: 0,
+        sortOrder: n(product.category?.sortOrder),
+      };
+
+      row.stockQty += stockQty;
+      row.costValue += stockUnits * n(product.costPrice);
+      row.retailValue += stockUnits * n(product.retailPrice);
+      rows.set(categoryKey, row);
+    }
+
+    const categoryRows = [...rows.values()].sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.categoryName.localeCompare(b.categoryName),
+    );
+    const totals = categoryRows.reduce(
+      (total, row) => ({
+        stockQty: total.stockQty + row.stockQty,
+        costValue: total.costValue + row.costValue,
+        retailValue: total.retailValue + row.retailValue,
+      }),
+      { stockQty: 0, costValue: 0, retailValue: 0 },
+    );
+
+    return { rows: categoryRows, totals };
+  }, [products]);
 
   const kpis = useMemo(() => {
     const totalOrders = filteredOrders.length;
@@ -435,6 +488,34 @@ export default function DashboardTab({
     },
   ];
 
+  const stockValueCols: ColumnsType<StockValueRow> = [
+    { title: "Animal / category", dataIndex: "categoryName", key: "categoryName" },
+    {
+      title: "Items in stock",
+      dataIndex: "stockQty",
+      key: "stockQty",
+      width: 150,
+      align: "right",
+      render: (value) => n(value).toFixed(0),
+    },
+    {
+      title: "Total cost value",
+      dataIndex: "costValue",
+      key: "costValue",
+      width: 180,
+      align: "right",
+      render: (value) => money(n(value)),
+    },
+    {
+      title: "Total retail value",
+      dataIndex: "retailValue",
+      key: "retailValue",
+      width: 180,
+      align: "right",
+      render: (value) => money(n(value)),
+    },
+  ];
+
   function setPreset(preset: "7" | "30" | "this_month" | "all") {
     setActivePreset(preset);
 
@@ -648,6 +729,42 @@ export default function DashboardTab({
               value={kpis.activeProducts}
               suffix={` / ${kpis.totalProducts}`}
             />
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={[12, 12]}>
+        <Col xs={24}>
+          <Card className="aca-card" title="Current stock value by animal / category" loading={loading}>
+            <Row gutter={[12, 12]} style={{ marginBottom: 14 }}>
+              <Col xs={24} sm={12}>
+                <Statistic title="Total stock at cost" value={money(stockValuation.totals.costValue)} />
+              </Col>
+              <Col xs={24} sm={12}>
+                <Statistic title="Total stock at retail" value={money(stockValuation.totals.retailValue)} />
+              </Col>
+            </Row>
+            <Table
+              size="small"
+              rowKey="key"
+              pagination={false}
+              columns={stockValueCols}
+              dataSource={stockValuation.rows}
+              locale={{ emptyText: "No stock quantities recorded" }}
+              summary={() => (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0}><Text strong>Total</Text></Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right"><Text strong>{stockValuation.totals.stockQty.toFixed(0)}</Text></Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} align="right"><Text strong>{money(stockValuation.totals.costValue)}</Text></Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} align="right"><Text strong>{money(stockValuation.totals.retailValue)}</Text></Table.Summary.Cell>
+                </Table.Summary.Row>
+              )}
+            />
+            <div style={{ marginTop: 8 }}>
+              <Text type="secondary">
+                Uses current product stock counts. Products priced per kilogram use their configured average pack weight. This summary is not affected by the order date or window filters.
+              </Text>
+            </div>
           </Card>
         </Col>
       </Row>

@@ -50,6 +50,7 @@ export type AdminProduct = {
   discountStartsAt?: string | null;
   discountExpiresAt?: string | null;
   stockQty: number;
+  processingStockWeightKg?: string | number;
   isActive: boolean;
   isForProcessing?: boolean;
   imageUrl?: string | null;

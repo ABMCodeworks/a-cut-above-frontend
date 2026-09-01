@@ -26,6 +26,12 @@ export default function App() {
   const navigate = useNavigate();
   const isAdminRoute = location.pathname.startsWith("/admin");
 
+  useEffect(() => {
+    document.title = isAdminRoute
+      ? "A Cut Above Meats Admin"
+      : "A Cut Above Meats Shop";
+  }, [isAdminRoute]);
+
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [checkingAdminAuth, setCheckingAdminAuth] = useState(false);
 

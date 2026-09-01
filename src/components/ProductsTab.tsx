@@ -36,6 +36,7 @@ type ProductForm = {
   wholesalePrice: number;
   costPrice: number;
   stockQty: number;
+  processingStockWeightKg: number;
   isActive: boolean;
   isFifthQuarter: boolean;
   isForProcessing: boolean;
@@ -50,6 +51,12 @@ type WasteForm = {
   weightValue?: number | null;
   weightUnit: "g" | "kg";
   reason?: string;
+};
+
+type ProcessingStockAdjustmentForm = {
+  action: "ADD" | "REMOVE";
+  packetCount: number;
+  totalWeightKg: number;
 };
 
 function resolveImageUrl(url?: string | null): string | null {
@@ -129,6 +136,13 @@ export default function ProductsTab({
   const [wasteProduct, setWasteProduct] = useState(null as AdminProduct | null);
   const [wasteForm] = Form.useForm();
 
+  const [processingStockModalOpen, setProcessingStockModalOpen] = useState(false);
+  const [processingStockProduct, setProcessingStockProduct] = useState(null as AdminProduct | null);
+  const [processingStockForm] = Form.useForm<ProcessingStockAdjustmentForm>();
+  const processingStockAction = Form.useWatch("action", processingStockForm) || "ADD";
+  const processingStockPackets = Number(Form.useWatch("packetCount", processingStockForm) || 0);
+  const processingStockWeightKg = Number(Form.useWatch("totalWeightKg", processingStockForm) || 0);
+
   const [groupByCategory, setGroupByCategory] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [showProcessingProducts, setShowProcessingProducts] = useState(false);
@@ -187,6 +201,7 @@ export default function ProductsTab({
       isFifthQuarter: false,
       isForProcessing: false,
       stockQty: 0,
+      processingStockWeightKg: 0,
       retailPrice: 0,
       wholesalePrice: 0,
       costPrice: 0,
@@ -216,6 +231,7 @@ export default function ProductsTab({
       wholesalePrice: Number(p.wholesalePrice),
       costPrice: Number((p as any).costPrice ?? 0),
       stockQty: p.stockQty,
+      processingStockWeightKg: Number(p.processingStockWeightKg || 0),
       isActive: p.isActive,
       isFifthQuarter: Boolean((p as any).isFifthQuarter),
       isForProcessing: Boolean(p.isForProcessing),
@@ -238,6 +254,39 @@ export default function ProductsTab({
       reason: "",
     });
     setWasteModalOpen(true);
+  }
+
+  function openProcessingStockModal(p: AdminProduct) {
+    setProcessingStockProduct(p);
+    processingStockForm.resetFields();
+    processingStockForm.setFieldsValue({
+      action: "ADD",
+      packetCount: 1,
+      totalWeightKg: 0,
+    });
+    setProcessingStockModalOpen(true);
+  }
+
+  async function saveProcessingStockAdjustment() {
+    if (!processingStockProduct) return;
+    const values = await processingStockForm.validateFields();
+    try {
+      await api.post(
+        `/api/admin/products/${processingStockProduct.id}/processing-stock/adjust`,
+        values,
+      );
+      message.success(
+        values.action === "ADD"
+          ? "Processing stock added"
+          : "Processing stock removed",
+      );
+      setProcessingStockModalOpen(false);
+      setProcessingStockProduct(null);
+      processingStockForm.resetFields();
+      onReload();
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || "Could not adjust processing stock");
+    }
   }
 
   async function deleteOrArchiveProduct(p: AdminProduct) {
@@ -272,6 +321,7 @@ export default function ProductsTab({
         discountStartsAt: (p as any).discountStartsAt ?? null,
         discountExpiresAt: (p as any).discountExpiresAt ?? null,
         stockQty: p.stockQty,
+        processingStockWeightKg: Number(p.processingStockWeightKg || 0),
         isActive: true,
         isFifthQuarter: Boolean((p as any).isFifthQuarter),
         isForProcessing: Boolean(p.isForProcessing),
@@ -352,6 +402,9 @@ export default function ProductsTab({
       wholesalePrice: values.wholesalePrice,
       costPrice: values.costPrice,
       stockQty: values.stockQty,
+      processingStockWeightKg: values.isForProcessing
+        ? Number(values.processingStockWeightKg || 0)
+        : 0,
       isActive: values.isActive ?? true,
       isFifthQuarter: values.isFifthQuarter ?? false,
       isForProcessing: values.isForProcessing ?? false,
@@ -381,6 +434,10 @@ export default function ProductsTab({
       fd.append("wholesalePrice", String(payload.wholesalePrice));
       fd.append("costPrice", String(payload.costPrice));
       fd.append("stockQty", String(payload.stockQty));
+      fd.append(
+        "processingStockWeightKg",
+        String(payload.processingStockWeightKg),
+      );
       fd.append("isActive", String(payload.isActive));
       fd.append("isFifthQuarter", String(payload.isFifthQuarter));
       fd.append("isForProcessing", String(payload.isForProcessing));
@@ -513,11 +570,19 @@ export default function ProductsTab({
       onClick: () => openEditProduct(p),
     });
 
-    items.push({
-      key: "waste",
-      label: "Waste",
-      onClick: () => openWasteModal(p),
-    });
+    if (p.isForProcessing) {
+      items.push({
+        key: "adjust-processing-stock",
+        label: "Adjust Processing Stock",
+        onClick: () => openProcessingStockModal(p),
+      });
+    } else {
+      items.push({
+        key: "waste",
+        label: "Waste",
+        onClick: () => openWasteModal(p),
+      });
+    }
 
     items.push({
       key: "move-up",
@@ -684,9 +749,9 @@ export default function ProductsTab({
       render: (_: any, p: AdminProduct) =>
         p.isForProcessing ? (
           <div style={{ display: "grid", gap: 2 }}>
-            <Text>{p.stockQty} items</Text>
-            <Text>{Number(p.processingAvailableWeightKg || 0).toFixed(2)} kg</Text>
-            <Text type="secondary">available to process</Text>
+            <Text>{p.stockQty} packs</Text>
+            <Text>{Number(p.processingStockWeightKg || 0).toFixed(2)} kg</Text>
+            <Text type="secondary">processing stock</Text>
           </div>
         ) : p.stockQty,
     },
@@ -1018,11 +1083,11 @@ export default function ProductsTab({
 
           <Form.Item
             name="stockQty"
-            label={isForProcessing ? "Processing item count" : "Stock quantity"}
+            label={isForProcessing ? "Processing packs in stock" : "Stock quantity"}
             rules={[{ required: true }]}
             extra={
               isForProcessing
-                ? "Number of processing items currently on hand. Processing weight is tracked separately."
+                ? "Number of processing packs currently on hand."
                 : undefined
             }
           >
@@ -1031,6 +1096,17 @@ export default function ProductsTab({
               style={{ width: "100%" }}
             />
           </Form.Item>
+
+          {isForProcessing ? (
+            <Form.Item
+              name="processingStockWeightKg"
+              label="Total processing stock weight (kg)"
+              rules={[{ required: true }]}
+              extra="The exact combined weight of all processing packs currently on hand."
+            >
+              <InputNumber min={0} step={0.01} precision={2} style={{ width: "100%" }} />
+            </Form.Item>
+          ) : null}
 
           <Form.Item name="categoryId" label="Category">
             <Select
@@ -1048,6 +1124,72 @@ export default function ProductsTab({
           <Form.Item name="isActive" label="Active" valuePropName="checked">
             <Switch />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={processingStockProduct ? `Adjust Processing Stock — ${processingStockProduct.name}` : "Adjust Processing Stock"}
+        open={processingStockModalOpen}
+        onCancel={() => {
+          setProcessingStockModalOpen(false);
+          setProcessingStockProduct(null);
+          processingStockForm.resetFields();
+        }}
+        onOk={saveProcessingStockAdjustment}
+        okText={processingStockAction === "REMOVE" ? "Remove Stock" : "Add Stock"}
+        okButtonProps={{ danger: processingStockAction === "REMOVE" }}
+      >
+        <Form form={processingStockForm} layout="vertical">
+          {processingStockProduct ? (
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <Space size="large" wrap>
+                <Text><b>Current packs:</b> {processingStockProduct.stockQty}</Text>
+                <Text><b>Current weight:</b> {Number(processingStockProduct.processingStockWeightKg || 0).toFixed(2)} kg</Text>
+              </Space>
+            </Card>
+          ) : null}
+          <Form.Item name="action" label="Adjustment" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: "ADD", label: "Add processing stock" },
+                { value: "REMOVE", label: "Remove processing stock" },
+              ]}
+            />
+          </Form.Item>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Form.Item name="packetCount" label="Number of packs" rules={[{ required: true }]}>
+              <InputNumber
+                min={1}
+                max={processingStockAction === "REMOVE" ? processingStockProduct?.stockQty : undefined}
+                step={1}
+                precision={0}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+            <Form.Item name="totalWeightKg" label="Combined weight (kg)" rules={[{ required: true }]}>
+              <InputNumber
+                min={0.01}
+                max={processingStockAction === "REMOVE" ? Number(processingStockProduct?.processingStockWeightKg || 0) : undefined}
+                step={0.01}
+                precision={2}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+          </div>
+          {processingStockProduct ? (
+            <Card size="small">
+              <Space size="large" wrap>
+                <Text>
+                  <b>Resulting packs:</b>{" "}
+                  {Math.max(0, processingStockProduct.stockQty + (processingStockAction === "ADD" ? processingStockPackets : -processingStockPackets))}
+                </Text>
+                <Text>
+                  <b>Resulting weight:</b>{" "}
+                  {Math.max(0, Number(processingStockProduct.processingStockWeightKg || 0) + (processingStockAction === "ADD" ? processingStockWeightKg : -processingStockWeightKg)).toFixed(2)} kg
+                </Text>
+              </Space>
+            </Card>
+          ) : null}
         </Form>
       </Modal>
 
