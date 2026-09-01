@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Button,
   Card,
@@ -344,6 +344,8 @@ export default function CarcassWeightsTab({
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [saving, setSaving] = useState(false);
+  const [openingNew, setOpeningNew] = useState(false);
+  const openingNewRef = useRef(false);
 
   const selectedCategoryId = Form.useWatch("meatCategoryId", wetForm);
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId);
@@ -415,7 +417,7 @@ export default function CarcassWeightsTab({
     const [productResponse, categoryResponse] = await Promise.all([
       categoryRecord
         ? api.get(`/api/admin/carcass-weights/${encodeURIComponent(categoryRecord.animalId)}/products`)
-        : api.get("/api/admin/products"),
+        : api.get("/api/admin/carcass-weights/products"),
       api.get("/api/admin/categories"),
     ]);
     const nextProducts = productResponse.data?.products || [];
@@ -426,14 +428,15 @@ export default function CarcassWeightsTab({
   }
 
   async function openNew() {
-    setSaving(true);
+    if (openingNewRef.current) return;
+    openingNewRef.current = true;
+    setOpeningNew(true);
     try {
       const lookups = await loadLookups();
-      const category = lookups.categories[0];
       setEditing(null);
       wetForm.resetFields();
       wetForm.setFieldsValue({
-        meatCategoryId: category?.id || "",
+        meatCategoryId: lookups.categories[0]?.id || "",
         animalId: "",
         liveWeightDate: dayjs(),
         liveWeightKg: 0,
@@ -452,7 +455,8 @@ export default function CarcassWeightsTab({
     } catch (error: any) {
       message.error(error?.response?.data?.error || "Failed to load the entry form");
     } finally {
-      setSaving(false);
+      openingNewRef.current = false;
+      setOpeningNew(false);
     }
   }
 
@@ -896,7 +900,7 @@ export default function CarcassWeightsTab({
   ], [canManage, records]);
 
   return (
-    <Card title="Carcass Weights" extra={canManage ? <Button type="primary" onClick={openNew}>New Entry</Button> : null}>
+    <Card title="Carcass Weights" extra={canManage ? <Button type="primary" loading={openingNew} disabled={openingNew} onClick={openNew}>New Entry</Button> : null}>
       <Table
         loading={loading}
         rowKey="id"
