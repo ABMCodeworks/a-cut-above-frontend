@@ -16,6 +16,7 @@ import CarcassWeightsTab from "../../components/CarcassWeightsTab";
 import WasteManagementTab from "../../components/WasteManagementTab";
 import ContentTab from "../../components/ContentTab";
 import DiscountCodesTab from "../../components/DiscountCodesTab";
+import PrivacyRequestsTab from "../../components/PrivacyRequestsTab";
 
 export type AdminCategory = {
   id: string;
@@ -125,6 +126,8 @@ export type AdminOrder = {
   personalAddress?: string | null;
   packerInitials?: string | null;
   bagCount?: number | null;
+  whatsAppConsent?: boolean;
+  whatsAppConsentAt?: string | null;
   subtotal: number;
   discountTotal?: string | number;
   productDiscountTotal?: string | number;
@@ -173,7 +176,9 @@ export type AdminPermission =
   | "carcassweights.view"
   | "carcassweights.manage"
   | "content.view"
-  | "content.manage";
+  | "content.manage"
+  | "privacy.view"
+  | "privacy.manage";
 
 export type CarcassWeightRecord = {
   id: string;
@@ -336,6 +341,7 @@ export default function AdminDashboardPage() {
   const canViewWindows = hasPermission(myPermissions, "windows.view");
   const canViewUsers = hasPermission(myPermissions, "users.view");
   const canViewContent = hasPermission(myPermissions, "content.view");
+  const canViewPrivacy = hasPermission(myPermissions, "privacy.view");
   const canViewCarcassWeights = hasPermission(
     myPermissions,
     "carcassweights.view",
@@ -353,6 +359,8 @@ export default function AdminDashboardPage() {
             ? "users"
             : canViewContent
               ? "content"
+              : canViewPrivacy
+                ? "privacy"
               : canViewCarcassWeights
                 ? "carcass-weights"
                 : "dashboard";
@@ -514,6 +522,16 @@ export default function AdminDashboardPage() {
                     permissions={myPermissions}
                   />
                 ),
+              },
+            ]
+            : []),
+
+          ...(canViewPrivacy
+            ? [
+              {
+                key: "privacy",
+                label: "Privacy Requests",
+                children: <PrivacyRequestsTab permissions={myPermissions} />,
               },
             ]
             : []),

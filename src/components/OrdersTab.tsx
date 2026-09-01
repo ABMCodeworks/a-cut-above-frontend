@@ -909,6 +909,7 @@ export default function OrdersTab({
   const [createDropoffLocationId, setCreateDropoffLocationId] = useState("");
   const [createDeliveryScheduleId, setCreateDeliveryScheduleId] = useState("");
   const [createNotes, setCreateNotes] = useState("");
+  const [createWhatsAppConsent, setCreateWhatsAppConsent] = useState(false);
   const [createItems, setCreateItems] = useState<CreateOrderItem[]>([
     { productId: "", qty: 1 },
   ]);
@@ -1193,6 +1194,7 @@ export default function OrdersTab({
     setCreateDropoffLocationId(order?.dropoffLocationId || "");
     setCreateDeliveryScheduleId(order?.deliveryScheduleId || "");
     setCreateNotes(order?.notes || "");
+    setCreateWhatsAppConsent(Boolean(order?.whatsAppConsent));
     setCreateItems(
       order?.items?.length
         ? order.items.map((item) => ({
@@ -1256,7 +1258,9 @@ export default function OrdersTab({
       message.success("Status updated");
       if (sendWhatsApp && status === "DELIVERED" && res.data?.whatsapp?.sent === false) {
         message.warning(
-          res.data.whatsapp.reason === "not_configured"
+          res.data.whatsapp.reason === "consent_not_granted"
+            ? "WhatsApp was not sent because the customer has not consented"
+            : res.data.whatsapp.reason === "not_configured"
             ? "WhatsApp is not configured on the server"
             : "Status updated, but the WhatsApp message could not be sent",
         );
@@ -1507,7 +1511,9 @@ export default function OrdersTab({
       message.success("Order packed and moved to Out for Delivery");
       if (sendWhatsApp && res.data?.whatsapp?.sent === false) {
         message.warning(
-          res.data.whatsapp.reason === "not_configured"
+          res.data.whatsapp.reason === "consent_not_granted"
+            ? "WhatsApp was not sent because the customer has not consented"
+            : res.data.whatsapp.reason === "not_configured"
             ? "WhatsApp is not configured on the server"
             : "Order packed, but the WhatsApp message could not be sent",
         );
@@ -1648,6 +1654,7 @@ export default function OrdersTab({
         deliveryScheduleId: createDeliveryScheduleId,
         personalAddress: createPersonalAddress.trim(),
         notes: createNotes.trim(),
+        whatsAppConsent: createWhatsAppConsent,
         items: validItems,
       };
       const res = editingOrder
@@ -3037,6 +3044,14 @@ export default function OrdersTab({
               placeholder="Optional"
             />
           </div>
+
+          <Checkbox
+            checked={createWhatsAppConsent}
+            onChange={(e) => setCreateWhatsAppConsent(e.target.checked)}
+          >
+            The customer explicitly agreed to receive optional order-status
+            messages by WhatsApp and was told they may withdraw consent.
+          </Checkbox>
 
           <Divider style={{ margin: "4px 0" }} />
 

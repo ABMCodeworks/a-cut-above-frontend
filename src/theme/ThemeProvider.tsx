@@ -6,6 +6,10 @@ import React, {
   useEffect,
 } from "react";
 import { ConfigProvider, theme } from "antd";
+import {
+  canStorePreferences,
+  PRIVACY_PREFERENCES_EVENT,
+} from "../utils/privacyPreferences";
 
 type ThemeMode = "light" | "dark";
 type ThemeCtx = {
@@ -28,6 +32,7 @@ export default function ThemeProvider({
   children: React.ReactNode;
 }) {
   const [mode, setMode] = useState<ThemeMode>(() => {
+    if (!canStorePreferences()) return "light";
     const saved = localStorage.getItem("aca_theme_mode");
     return saved === "dark" || saved === "light"
       ? (saved as ThemeMode)
@@ -35,9 +40,21 @@ export default function ThemeProvider({
   });
 
   useEffect(() => {
-    localStorage.setItem("aca_theme_mode", mode);
+    if (canStorePreferences()) {
+      localStorage.setItem("aca_theme_mode", mode);
+    }
     document.documentElement.setAttribute("data-theme", mode);
   }, [mode]);
+
+  useEffect(() => {
+    const handlePreferences = (event: Event) => {
+      const allowed = Boolean((event as CustomEvent)?.detail?.preferences);
+      if (!allowed) setMode("light");
+    };
+    window.addEventListener(PRIVACY_PREFERENCES_EVENT, handlePreferences);
+    return () =>
+      window.removeEventListener(PRIVACY_PREFERENCES_EVENT, handlePreferences);
+  }, []);
 
   const { defaultAlgorithm, darkAlgorithm } = theme;
 

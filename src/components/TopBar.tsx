@@ -23,6 +23,7 @@ import {
   TeamOutlined,
 } from "@ant-design/icons";
 import { useCart } from "../context/CartContext";
+import { canStorePreferences } from "../utils/privacyPreferences";
 
 // ✅ Put your logo file here (adjust path as needed)
 import logo from "../assets/logo.png";
@@ -32,7 +33,7 @@ const { useBreakpoint } = Grid;
 
 function setTheme(t: "light" | "dark") {
   document.documentElement.setAttribute("data-theme", t);
-  localStorage.setItem("aca_theme", t);
+  if (canStorePreferences()) localStorage.setItem("aca_theme", t);
 }
 
 export default function TopBar() {
@@ -50,6 +51,7 @@ export default function TopBar() {
   );
 
   const [theme] = useState<"light" | "dark">(() => {
+    if (!canStorePreferences()) return "light";
     const saved = localStorage.getItem("aca_theme");
     return saved === "dark" ? "dark" : "light";
   });

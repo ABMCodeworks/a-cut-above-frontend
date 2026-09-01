@@ -1,8 +1,8 @@
 // src/App.tsx
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Route, Routes, useLocation, useNavigate } from "./lib/router";
-import { Layout, message } from "antd";
+import { Link, Route, Routes, useLocation, useNavigate } from "./lib/router";
+import { Button, Layout, Space, message } from "antd";
 import { CartProvider } from "./context/CartContext";
 import { api } from "./api/client";
 
@@ -15,6 +15,13 @@ import ContactPage from "./pages/public/ContactPage";
 import CheckoutPage from "./pages/public/CheckoutPage";
 import TrackOrderPage from "./pages/public/TrackOrderPage";
 import WholesalePinPage from "./pages/public/WholesalePinPage";
+import {
+  CookiePolicyPage,
+  PrivacyPolicyPage,
+  PrivacyRightsPage,
+  TermsPage,
+} from "./pages/public/LegalPages";
+import PrivacyPreferencesBanner from "./components/PrivacyPreferencesBanner";
 
 import AdminLoginPage from "./pages/admin/AdminLoginPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
@@ -113,6 +120,10 @@ export default function App() {
             <Route path="/checkout" element={<CheckoutPage />} />
             <Route path="/track" element={<TrackOrderPage />} />
             <Route path="/track-order" element={<TrackOrderPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/cookie-policy" element={<CookiePolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy-rights" element={<PrivacyRightsPage />} />
 
             <Route path="/admin" element={<AdminLoginPage />} />
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
@@ -120,8 +131,23 @@ export default function App() {
         </Content>
 
         <Footer style={{ textAlign: "center" }}>
-          A Cut Above © {new Date().getFullYear()}
+          <Space wrap split={<span aria-hidden="true">·</span>} style={{ justifyContent: "center" }}>
+            <span>A Cut Above © {new Date().getFullYear()}</span>
+            <Link to="/privacy">Privacy</Link>
+            <Link to="/cookie-policy">Cookies</Link>
+            <Link to="/terms">Shop Terms</Link>
+            <Link to="/privacy-rights">Privacy choices & data rights</Link>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={() => window.dispatchEvent(new Event("aca_open_privacy_preferences"))}
+            >
+              Manage preferences
+            </Button>
+          </Space>
         </Footer>
+        {!isAdminRoute ? <PrivacyPreferencesBanner /> : null}
       </Layout>
     </CartProvider>
   );

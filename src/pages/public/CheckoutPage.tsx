@@ -1,10 +1,11 @@
 // src/pages/public/CheckoutPage.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "../../lib/router";
+import { Link, useNavigate } from "../../lib/router";
 import {
   Alert,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Divider,
   Form,
@@ -31,6 +32,7 @@ import "react-international-phone/style.css";
 
 import { api, RAILWAY_BASE } from "../../api/client";
 import { useCart } from "../../context/CartContext";
+import { canStorePreferences } from "../../utils/privacyPreferences";
 
 const { Title, Text } = Typography;
 const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
@@ -204,7 +206,9 @@ export default function CheckoutPage() {
         );
 
       // Carry through the delivery location the customer picked on the shop page.
-      const saved = localStorage.getItem(PREFERRED_LOCATION_KEY);
+      const saved = canStorePreferences()
+        ? localStorage.getItem(PREFERRED_LOCATION_KEY)
+        : null;
       const savedValid =
         saved && activeSorted.some((d) => d.id === saved) ? saved : null;
 
@@ -414,6 +418,8 @@ export default function CheckoutPage() {
             : "",
         notes: isWholesale ? notes : "",
         discountCode: discountPreview?.code ?? discountCodeInput.trim(),
+        legalAccepted: values.legalAccepted === true,
+        whatsAppConsent: values.whatsAppConsent === true,
         items: items.map((i) => ({ productId: i.product.id, qty: i.qty })),
       };
 
@@ -763,7 +769,9 @@ export default function CheckoutPage() {
                   loading={dropoffsLoading}
                   placeholder="Select a delivery location"
                   onChange={(v) => {
-                    if (v) localStorage.setItem(PREFERRED_LOCATION_KEY, v);
+                    if (v && canStorePreferences()) {
+                      localStorage.setItem(PREFERRED_LOCATION_KEY, v);
+                    }
                   }}
                   options={dropoffs
                     .filter((d) => d.isActive)
@@ -856,6 +864,37 @@ export default function CheckoutPage() {
                   </Form.Item>
                 </>
               )}
+
+              <Divider />
+
+              <Form.Item
+                name="legalAccepted"
+                valuePropName="checked"
+                rules={[
+                  {
+                    validator: (_, value) =>
+                      value
+                        ? Promise.resolve()
+                        : Promise.reject(
+                            new Error("Please accept the shop terms and privacy notice"),
+                          ),
+                  },
+                ]}
+              >
+                <Checkbox>
+                  I accept the <Link to="/terms">Shop Terms</Link> and acknowledge
+                  the <Link to="/privacy">Privacy Notice</Link> describing the use
+                  of my details to process and fulfil this order.
+                </Checkbox>
+              </Form.Item>
+
+              <Form.Item name="whatsAppConsent" valuePropName="checked">
+                <Checkbox>
+                  Send optional order-status updates to this phone number by WhatsApp.
+                  I can withdraw this choice at any time through the{" "}
+                  <Link to="/privacy-rights">privacy choices page</Link>.
+                </Checkbox>
+              </Form.Item>
 
               <Divider />
 

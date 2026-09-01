@@ -106,6 +106,13 @@ const PERMISSION_GROUPS: {
       ],
     },
     {
+      title: "Privacy Requests",
+      items: [
+        { label: "View privacy requests", value: "privacy.view" },
+        { label: "Manage privacy requests", value: "privacy.manage" },
+      ],
+    },
+    {
       title: "Everything",
       items: [{ label: "Full admin access", value: "admin.full" }],
     },

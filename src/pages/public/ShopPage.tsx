@@ -36,6 +36,7 @@ import type { Product } from "../../types";
 import { useCart } from "../../context/CartContext";
 import { useLocation, useNavigate } from "../../lib/router";
 import { IconPreview } from "../../components/iconCatalog";
+import { canStorePreferences } from "../../utils/privacyPreferences";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -268,7 +269,9 @@ export default function ShopPage() {
   function savePreferredLocation(id: string | null) {
     if (!id) return;
 
-    localStorage.setItem(PREFERRED_LOCATION_KEY, id);
+    if (canStorePreferences()) {
+      localStorage.setItem(PREFERRED_LOCATION_KEY, id);
+    }
     setSelectedLocationId(id);
     setLocationPromptOpen(false);
   }
