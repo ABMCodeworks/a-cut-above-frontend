@@ -195,9 +195,10 @@ export function CookiePolicyPage() {
     >
       <Title level={3}>Essential storage</Title>
       <Paragraph>
-        The shop stores your cart and wholesale session in your browser so requested
-        features work. The admin area uses a secure authentication cookie. These are
-        necessary for the service and are not used for advertising.
+        The shop stores your cart, wholesale session and selected delivery location
+        for the current browser session so requested features work. The admin area
+        uses a secure authentication cookie. These are necessary for the service and
+        are not used for advertising.
       </Paragraph>
 
       <Title level={3}>Optional preferences</Title>

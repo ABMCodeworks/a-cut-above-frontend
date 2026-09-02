@@ -36,12 +36,14 @@ import type { Product } from "../../types";
 import { useCart } from "../../context/CartContext";
 import { useLocation, useNavigate } from "../../lib/router";
 import { IconPreview } from "../../components/iconCatalog";
-import { canStorePreferences } from "../../utils/privacyPreferences";
+import {
+  getStoredDeliveryLocation,
+  storeDeliveryLocation,
+} from "../../utils/deliveryLocationStorage";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
 
-const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
 const HEADER_STICKY_OFFSET = 92;
 const MOBILE_HEADER_STICKY_OFFSET = 67;
 const SEARCH_STICKY_HEIGHT = 76;
@@ -269,9 +271,7 @@ export default function ShopPage() {
   function savePreferredLocation(id: string | null) {
     if (!id) return;
 
-    if (canStorePreferences()) {
-      localStorage.setItem(PREFERRED_LOCATION_KEY, id);
-    }
+    storeDeliveryLocation(id);
     setSelectedLocationId(id);
     setLocationPromptOpen(false);
   }
@@ -320,6 +320,11 @@ export default function ShopPage() {
       setSelectedLocationId((prev) => {
         if (prev && activeLocations.some((loc) => loc.id === prev)) {
           return prev;
+        }
+
+        const stored = getStoredDeliveryLocation();
+        if (stored && activeLocations.some((loc) => loc.id === stored)) {
+          return stored;
         }
 
         return null;
@@ -390,8 +395,11 @@ export default function ShopPage() {
 
     didCheckPromptRef.current = true;
 
-    setLocationPromptOpen(true);
-  }, [dropoffLocations, isWholesale]);
+    const hasSelectedLocation = dropoffLocations.some(
+      (loc) => String(loc.id) === String(selectedLocationId),
+    );
+    setLocationPromptOpen(!hasSelectedLocation);
+  }, [dropoffLocations, isWholesale, selectedLocationId]);
 
   const selectedLocation = useMemo(
     () =>
@@ -1320,11 +1328,8 @@ export default function ShopPage() {
                           <div
                             className="aca-productTitle"
                             style={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
                               whiteSpace: "normal",
+                              overflowWrap: "anywhere",
                               lineHeight: 1.2,
                               fontSize: 14,
                             }}
@@ -1339,9 +1344,9 @@ export default function ShopPage() {
                           className="aca-productTitle"
                           style={{
                             display: "block",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.25,
                           }}
                         >
                           {p.name}

@@ -24,8 +24,7 @@ import {
 const { Title, Text } = Typography;
 
 type TrackForm = {
-  orderNo: string;
-  contact: string;
+  lookup: string;
 };
 
 type CheckoutAcknowledgement = {
@@ -128,8 +127,7 @@ export default function TrackOrderPage() {
     setLoading(true);
     try {
       const res = await api.post("/api/public/orders/track", {
-        orderNo: values.orderNo,
-        contact: values.contact,
+        lookup: values.lookup,
       });
       setOrder(res.data.order);
     } catch (e: any) {
@@ -160,7 +158,7 @@ export default function TrackOrderPage() {
             Track Your Order
           </Title>
           <Text className="aca-tracking__subtitle">
-            Enter your order number and the phone number used to place the order.
+            Enter your order number or the phone number used to place the order.
           </Text>
         </div>
       </div>
@@ -179,8 +177,8 @@ export default function TrackOrderPage() {
           description={
             <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
               <Text strong style={{ color: "#237804" }}>
-                Please write down your order number — you will need it to track
-                your order below.
+                You can track your order below using this order number or your
+                phone number.
               </Text>
               {successDeliveryDateLabel ? (
                 <Text>
@@ -206,30 +204,31 @@ export default function TrackOrderPage() {
 
       <Card className="aca-trackCard">
         <Form layout="inline" form={form} onFinish={track} style={{ gap: 12 }}>
-          <Form.Item name="orderNo" rules={[{ required: true }]}>
-            <Input
-              prefix={<SearchOutlined />}
-              placeholder="Order No (e.g. ACA-20260213-6782)"
-              style={{ width: 280 }}
-            />
-          </Form.Item>
-
           <Form.Item
-            name="contact"
+            name="lookup"
             rules={[
-              { required: true, message: "Enter your phone number" },
+              {
+                required: true,
+                message: "Enter your order number or phone number",
+              },
               {
                 validator: (_, value) => {
                   const v = String(value || "").trim();
                   if (v.length < 5) {
-                    return Promise.reject("Please enter a valid phone number");
+                    return Promise.reject(
+                      "Please enter a valid order number or phone number",
+                    );
                   }
                   return Promise.resolve();
                 },
               },
             ]}
           >
-            <Input placeholder="Phone number" style={{ width: 240 }} />
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder="Order number or phone number"
+              style={{ width: 360, maxWidth: "100%" }}
+            />
           </Form.Item>
 
           <Button type="primary" htmlType="submit" loading={loading}>

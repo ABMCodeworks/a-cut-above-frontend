@@ -53,6 +53,7 @@ const STATUS_OPTIONS = [
   { label: "Out for Delivery", value: "OUT_FOR_DELIVERY" },
   { label: "Delivered", value: "DELIVERED" },
 ];
+const WHOLESALE_PACKING_FILTER = "__wholesale__";
 
 type DeliverySchedule = {
   id: string;
@@ -132,6 +133,17 @@ function orderLocationName(order: AdminOrder) {
 function orderAddress(order: AdminOrder) {
   const address = String((order as any).personalAddress || "").trim();
   return address;
+}
+
+function isWholesaleOrder(order: AdminOrder) {
+  return String(order.pricingTier || "").toUpperCase() === "WHOLESALE";
+}
+
+function orderDisplayName(order: AdminOrder) {
+  const businessName = String(order.businessName || "").trim();
+  return isWholesaleOrder(order) && businessName
+    ? businessName
+    : String(order.customerName || "").trim();
 }
 
 function packedPacketCount(it: AdminOrderItem) {
@@ -1030,16 +1042,34 @@ export default function OrdersTab({
     );
   }, [displayOrders, currentWindowId]);
 
-  const packingScheduleOptions = useMemo(
+  const hasActiveWholesaleOrders = useMemo(
     () =>
-      schedules
-        .filter((schedule) => activeExportScheduleIds.has(schedule.id))
-        .map((schedule) => ({
-          value: schedule.id,
-          label: `${schedule.dropoffLocation.name} — ${fmtDate(schedule.cutoffDate)} → ${fmtDate(schedule.deliveryDate)}`,
-        })),
-    [schedules, activeExportScheduleIds],
+      displayOrders.some(
+        (order) =>
+          isWholesaleOrder(order) &&
+          String(order.status || "").toUpperCase() !== "DELIVERED",
+      ),
+    [displayOrders],
   );
+
+  const packingScheduleOptions = useMemo(() => {
+    const options = schedules
+      .filter((schedule) => activeExportScheduleIds.has(schedule.id))
+      .map((schedule) => ({
+        value: schedule.id,
+        label: `${schedule.dropoffLocation.name} — ${fmtDate(schedule.cutoffDate)} → ${fmtDate(schedule.deliveryDate)}`,
+      }));
+
+    return hasActiveWholesaleOrders
+      ? [
+          {
+            value: WHOLESALE_PACKING_FILTER,
+            label: "Wholesale Business Orders",
+          },
+          ...options,
+        ]
+      : options;
+  }, [schedules, activeExportScheduleIds, hasActiveWholesaleOrders]);
 
   const deliveryRunScheduleOptions = useMemo(
     () =>
@@ -1060,11 +1090,18 @@ export default function OrdersTab({
   useEffect(() => {
     if (
       packingScheduleId &&
+      packingScheduleId !== WHOLESALE_PACKING_FILTER &&
       !activeExportScheduleIds.has(packingScheduleId)
     ) {
       setPackingScheduleId("");
     }
-  }, [packingScheduleId, activeExportScheduleIds]);
+    if (
+      packingScheduleId === WHOLESALE_PACKING_FILTER &&
+      !hasActiveWholesaleOrders
+    ) {
+      setPackingScheduleId("");
+    }
+  }, [packingScheduleId, activeExportScheduleIds, hasActiveWholesaleOrders]);
 
   useEffect(() => {
     if (
@@ -1700,20 +1737,34 @@ export default function OrdersTab({
         return false;
       }
 
-      if (currentWindowId && String((o as any).windowId || "") !== currentWindowId) {
-        return false;
+      const wholesale = isWholesaleOrder(o);
+
+      if (packingScheduleId === WHOLESALE_PACKING_FILTER) {
+        return wholesale;
       }
 
       if (packingScheduleId) {
-        return String((o as any).deliveryScheduleId || "") === packingScheduleId;
+        return (
+          !wholesale &&
+          String((o as any).deliveryScheduleId || "") === packingScheduleId
+        );
+      }
+
+      if (
+        !wholesale &&
+        currentWindowId &&
+        String((o as any).windowId || "") !== currentWindowId
+      ) {
+        return false;
       }
 
       return true;
     });
 
-    const targetSchedule = packingScheduleId
-      ? schedules.find((s) => s.id === packingScheduleId)
-      : null;
+    const targetSchedule =
+      packingScheduleId && packingScheduleId !== WHOLESALE_PACKING_FILTER
+        ? schedules.find((s) => s.id === packingScheduleId)
+        : null;
 
     if (!ordersToExport.length) {
       message.warning("No orders to export");
@@ -1734,7 +1785,7 @@ export default function OrdersTab({
     );
 
     const headers = [
-      "Customer",
+      "Customer / Company",
       "Phone",
       "Order No",
       "No. of Bags",
@@ -1749,7 +1800,7 @@ export default function OrdersTab({
 
     for (const o of ordersToExport) {
       const row: any[] = [
-        o.customerName ?? "",
+        orderDisplayName(o),
         o.customerPhone ?? "",
         o.orderNo ?? "",
         Number(o.bagCount) > 0 ? Number(o.bagCount) : "",
@@ -1795,37 +1846,54 @@ export default function OrdersTab({
       })),
     ];
 
-    const label = targetSchedule
-      ? `${targetSchedule.dropoffLocation.name}_cutoff-${fmtDate(targetSchedule.cutoffDate)}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
-        .replace(/\s+/g, "-")
-        .replace(/,/g, "")
-      : `all_${dayjs().format("YYYY-MM-DD")}`;
+    const label =
+      packingScheduleId === WHOLESALE_PACKING_FILTER
+        ? `wholesale_${dayjs().format("YYYY-MM-DD")}`
+        : targetSchedule
+          ? `${targetSchedule.dropoffLocation.name}_cutoff-${fmtDate(targetSchedule.cutoffDate)}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
+              .replace(/\s+/g, "-")
+              .replace(/,/g, "")
+          : `all_${dayjs().format("YYYY-MM-DD")}`;
 
-    await writeXlsxFile(aoa, {
-      sheet: "Packing List",
-      columns,
-    }).toFile(`packing-list_${label}.xlsx`);
+    try {
+      await writeXlsxFile(aoa, {
+        sheet: "Packing List",
+        columns,
+      }).toFile(`packing-list_${label}.xlsx`);
 
-    message.success(`Exported ${ordersToExport.length} orders`);
-    setPackingOpen(false);
+      message.success(`Exported ${ordersToExport.length} orders`);
+      setPackingOpen(false);
+    } catch (error) {
+      console.error("Packing list export failed:", error);
+      message.error("Could not generate the Excel packing list");
+    }
   }
 
   async function exportDeliveryList() {
     const ordersToExport = displayOrders.filter((o) => {
+      const wholesale = isWholesaleOrder(o);
+
       if (selectedDeliveryRunWindowId) {
-        if (String((o as any).windowId || "") !== selectedDeliveryRunWindowId) {
+        if (
+          !wholesale &&
+          String((o as any).windowId || "") !== selectedDeliveryRunWindowId
+        ) {
           return false;
         }
       }
 
       if (deliveryRunLocationId) {
-        if (String((o as any).dropoffLocationId || "") !== deliveryRunLocationId) {
+        if (
+          wholesale ||
+          String((o as any).dropoffLocationId || "") !== deliveryRunLocationId
+        ) {
           return false;
         }
       }
 
       if (deliveryRunScheduleId) {
         if (
+          wholesale ||
           String((o as any).deliveryScheduleId || "") !== deliveryRunScheduleId
         ) {
           return false;
@@ -1858,7 +1926,7 @@ export default function OrdersTab({
     );
 
     const headers = [
-      "Customer",
+      "Customer / Company",
       "Phone",
       "Address",
       "Order No",
@@ -1911,7 +1979,7 @@ export default function OrdersTab({
       grandTotal += Number.isFinite(orderTotal) ? orderTotal : 0;
 
       rows.push([
-        order.customerName ?? "",
+        orderDisplayName(order),
         order.customerPhone ?? "",
         orderAddress(order),
         order.orderNo ?? "",
@@ -1974,11 +2042,16 @@ export default function OrdersTab({
           .replace(/,/g, "")
       : `delivery-list_${dayjs().format("YYYY-MM-DD")}`;
 
-    await writeXlsxFile([headers, ...rows, [], totalsRow], {
-      sheet: "Delivery List",
-      columns,
-    }).toFile(`delivery-list_${label}.xlsx`);
-    message.success(`Exported ${ordersToExport.length} active orders`);
+    try {
+      await writeXlsxFile([headers, ...rows, [], totalsRow], {
+        sheet: "Delivery List",
+        columns,
+      }).toFile(`delivery-list_${label}.xlsx`);
+      message.success(`Exported ${ordersToExport.length} active orders`);
+    } catch (error) {
+      console.error("Delivery list export failed:", error);
+      message.error("Could not generate the Excel delivery list");
+    }
   }
 
   function exportDeliveryRunPdf() {
@@ -2698,10 +2771,18 @@ export default function OrdersTab({
               }}
             >
               <Card size="small">
-                <Text type="secondary">Customer</Text>
+                <Text type="secondary">
+                  {isWholesaleOrder(packingOrder) ? "Company" : "Customer"}
+                </Text>
                 <div style={{ fontWeight: 800, marginTop: 4 }}>
-                  {packingOrder.customerName}
+                  {orderDisplayName(packingOrder)}
                 </div>
+                {isWholesaleOrder(packingOrder) &&
+                String(packingOrder.businessName || "").trim() ? (
+                  <Text type="secondary">
+                    Contact: {packingOrder.customerName}
+                  </Text>
+                ) : null}
               </Card>
 
               <Card size="small">

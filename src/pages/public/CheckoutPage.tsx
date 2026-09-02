@@ -32,10 +32,12 @@ import "react-international-phone/style.css";
 
 import { api, RAILWAY_BASE } from "../../api/client";
 import { useCart } from "../../context/CartContext";
-import { canStorePreferences } from "../../utils/privacyPreferences";
+import {
+  getStoredDeliveryLocation,
+  storeDeliveryLocation,
+} from "../../utils/deliveryLocationStorage";
 
 const { Title, Text } = Typography;
-const PREFERRED_LOCATION_KEY = "aca_preferred_dropoff_location";
 
 type WindowState = {
   open: boolean;
@@ -206,9 +208,7 @@ export default function CheckoutPage() {
         );
 
       // Carry through the delivery location the customer picked on the shop page.
-      const saved = canStorePreferences()
-        ? localStorage.getItem(PREFERRED_LOCATION_KEY)
-        : null;
+      const saved = getStoredDeliveryLocation();
       const savedValid =
         saved && activeSorted.some((d) => d.id === saved) ? saved : null;
 
@@ -769,9 +769,7 @@ export default function CheckoutPage() {
                   loading={dropoffsLoading}
                   placeholder="Select a delivery location"
                   onChange={(v) => {
-                    if (v && canStorePreferences()) {
-                      localStorage.setItem(PREFERRED_LOCATION_KEY, v);
-                    }
+                    if (v) storeDeliveryLocation(v);
                   }}
                   options={dropoffs
                     .filter((d) => d.isActive)

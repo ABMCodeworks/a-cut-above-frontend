@@ -42,7 +42,6 @@ export type OrderTrackItem = {
 export type TrackedOrder = {
   orderNo: string;
   customerName: string;
-  customerPhone: string;
   status: string;
   pricingTier: PricingTier;
   createdAt: string;

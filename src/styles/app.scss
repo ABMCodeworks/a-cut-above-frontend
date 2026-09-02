@@ -655,6 +655,18 @@ body {
 
 .aca-productTitle {
   font-family: "Playfair Display", serif;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.aca-productCard .ant-card-head-title {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.aca-productCard .ant-card-head-wrapper {
+  align-items: flex-start;
 }
 
 .aca-productDesc {
