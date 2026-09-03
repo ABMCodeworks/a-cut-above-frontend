@@ -38,6 +38,7 @@ type ProductForm = {
   stockQty: number;
   processingStockWeightKg: number;
   isActive: boolean;
+  isHiddenFromShop: boolean;
   isFifthQuarter: boolean;
   isForProcessing: boolean;
   categoryId: string | null;
@@ -146,6 +147,9 @@ export default function ProductsTab({
   const [groupByCategory, setGroupByCategory] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [showProcessingProducts, setShowProcessingProducts] = useState(false);
+  const [visibilityUpdatingIds, setVisibilityUpdatingIds] = useState<string[]>(
+    [],
+  );
   const [search, setSearch] = useState("");
   const [pendingImageFile, setPendingImageFile] = useState(null as File | null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState(
@@ -198,6 +202,7 @@ export default function ProductsTab({
     productForm.setFieldsValue({
       unit: "kg",
       isActive: true,
+      isHiddenFromShop: false,
       isFifthQuarter: false,
       isForProcessing: false,
       stockQty: 0,
@@ -233,6 +238,7 @@ export default function ProductsTab({
       stockQty: p.stockQty,
       processingStockWeightKg: Number(p.processingStockWeightKg || 0),
       isActive: p.isActive,
+      isHiddenFromShop: Boolean(p.isHiddenFromShop),
       isFifthQuarter: Boolean((p as any).isFifthQuarter),
       isForProcessing: Boolean(p.isForProcessing),
       categoryId: p.categoryId ?? null,
@@ -323,6 +329,7 @@ export default function ProductsTab({
         stockQty: p.stockQty,
         processingStockWeightKg: Number(p.processingStockWeightKg || 0),
         isActive: true,
+        isHiddenFromShop: Boolean(p.isHiddenFromShop),
         isFifthQuarter: Boolean((p as any).isFifthQuarter),
         isForProcessing: Boolean(p.isForProcessing),
         categoryId: p.categoryId ?? null,
@@ -360,6 +367,32 @@ export default function ProductsTab({
       onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Reorder failed");
+    }
+  }
+
+  async function setProductShopVisibility(
+    product: AdminProduct,
+    isHiddenFromShop: boolean,
+  ) {
+    setVisibilityUpdatingIds((current) => [...current, product.id]);
+    try {
+      await api.patch(`/api/admin/products/${product.id}/shop-visibility`, {
+        isHiddenFromShop,
+      });
+      message.success(
+        isHiddenFromShop
+          ? `${product.name} hidden from shop`
+          : `${product.name} shown in shop`,
+      );
+      onReload();
+    } catch (e: any) {
+      message.error(
+        e?.response?.data?.error || "Could not update shop visibility",
+      );
+    } finally {
+      setVisibilityUpdatingIds((current) =>
+        current.filter((id) => id !== product.id),
+      );
     }
   }
 
@@ -406,6 +439,7 @@ export default function ProductsTab({
         ? Number(values.processingStockWeightKg || 0)
         : 0,
       isActive: values.isActive ?? true,
+      isHiddenFromShop: values.isHiddenFromShop ?? false,
       isFifthQuarter: values.isFifthQuarter ?? false,
       isForProcessing: values.isForProcessing ?? false,
       categoryId: values.categoryId ?? null,
@@ -439,6 +473,7 @@ export default function ProductsTab({
         String(payload.processingStockWeightKg),
       );
       fd.append("isActive", String(payload.isActive));
+      fd.append("isHiddenFromShop", String(payload.isHiddenFromShop));
       fd.append("isFifthQuarter", String(payload.isFifthQuarter));
       fd.append("isForProcessing", String(payload.isForProcessing));
       fd.append("categoryId", payload.categoryId ?? "");
@@ -768,6 +803,21 @@ export default function ProductsTab({
         ) : (
           <Tag>Unassigned</Tag>
         ),
+    },
+    {
+      title: "Hide from shop",
+      key: "isHiddenFromShop",
+      width: 140,
+      render: (_: any, p: AdminProduct) => (
+        <Switch
+          checked={Boolean(p.isHiddenFromShop)}
+          checkedChildren="Hidden"
+          unCheckedChildren="Shown"
+          loading={visibilityUpdatingIds.includes(p.id)}
+          disabled={!p.isActive || Boolean(p.isForProcessing)}
+          onChange={(checked) => setProductShopVisibility(p, checked)}
+        />
+      ),
     },
     {
       title: "",
@@ -1122,6 +1172,15 @@ export default function ProductsTab({
           </Form.Item>
 
           <Form.Item name="isActive" label="Active" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="isHiddenFromShop"
+            label="Hide from shop"
+            valuePropName="checked"
+            extra="Keeps this product active everywhere else, but removes it from the public shop page."
+          >
             <Switch />
           </Form.Item>
         </Form>

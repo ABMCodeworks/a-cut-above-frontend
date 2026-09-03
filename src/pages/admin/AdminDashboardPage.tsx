@@ -53,6 +53,7 @@ export type AdminProduct = {
   stockQty: number;
   processingStockWeightKg?: string | number;
   isActive: boolean;
+  isHiddenFromShop?: boolean;
   isForProcessing?: boolean;
   imageUrl?: string | null;
   sortOrder?: number | null;
