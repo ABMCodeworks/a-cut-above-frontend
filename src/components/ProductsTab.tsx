@@ -721,16 +721,27 @@ export default function ProductsTab({
       title: "Name",
       dataIndex: "name",
       key: "name",
-      width: 140,
-      ellipsis: true,
+      width: 115,
       render: (_: any, p: AdminProduct) => (
-        <Space size={8} wrap>
-          <span>{p.name}</span>
+        <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+          <Text
+            strong
+            ellipsis={{ tooltip: p.name }}
+            style={{ maxWidth: 105 }}
+          >
+            {p.name}
+          </Text>
           {(p as any).isFifthQuarter ? (
-            <Tag color="purple">5th Quarter</Tag>
+            <Tag color="purple" style={{ width: "fit-content", margin: 0 }}>
+              5th Quarter
+            </Tag>
           ) : null}
-          {p.isForProcessing ? <Tag color="orange">For Processing</Tag> : null}
-        </Space>
+          {p.isForProcessing ? (
+            <Tag color="orange" style={{ width: "fit-content", margin: 0 }}>
+              For Processing
+            </Tag>
+          ) : null}
+        </div>
       ),
     },
     {
