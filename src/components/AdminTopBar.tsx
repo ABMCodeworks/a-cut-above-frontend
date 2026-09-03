@@ -19,7 +19,7 @@ export default function AdminTopBar({
 }) {
   return (
     <div className="aca-header">
-      <div className="aca-header__inner">
+      <div className="aca-header__inner" style={{ maxWidth: 1800 }}>
         {/* Brand */}
         <div
           className="aca-brand"

@@ -139,6 +139,24 @@ function isWholesaleOrder(order: AdminOrder) {
   return String(order.pricingTier || "").toUpperCase() === "WHOLESALE";
 }
 
+function orderBelongsToWindow(order: AdminOrder, window?: AdminWindow) {
+  if (!window) return false;
+  if (String(order.windowId || "") === window.id) return true;
+
+  // Older wholesale orders were saved without a window. Keep them in the
+  // window in which they were created without leaking them into later runs.
+  if (order.windowId || !isWholesaleOrder(order)) return false;
+
+  const createdAt = new Date(order.createdAt).getTime();
+  const startsAt = new Date(window.startsAt).getTime();
+  const endsAt = new Date(window.endsAt).getTime();
+
+  if (!Number.isFinite(createdAt) || !Number.isFinite(startsAt)) return false;
+  if (window.isPermanent) return createdAt >= startsAt;
+
+  return Number.isFinite(endsAt) && createdAt >= startsAt && createdAt <= endsAt;
+}
+
 function orderDisplayName(order: AdminOrder) {
   const businessName = String(order.businessName || "").trim();
   return isWholesaleOrder(order) && businessName
@@ -487,54 +505,73 @@ function OrderTable({
           title: "Order",
           dataIndex: "orderNo",
           key: "orderNo",
-          width: isMobile ? 120 : 160,
+          width: isMobile ? 128 : 150,
           fixed: isMobile ? "left" : undefined,
+          render: (value: string, row: AdminOrder) => (
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+              <span
+                style={{
+                  display: "block",
+                  fontWeight: 800,
+                  lineHeight: 1.25,
+                  overflowWrap: "anywhere",
+                  whiteSpace: "normal",
+                }}
+              >
+                {value || "—"}
+              </span>
+              <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.25 }}>
+                {new Date(row.createdAt).toLocaleDateString()}
+              </Text>
+            </div>
+          ),
         },
         {
           title: "Customer",
           key: "customerName",
-          width: isMobile ? 160 : 180,
+          width: isMobile ? 180 : 220,
           render: (_: any, row: AdminOrder) => {
             const isWholesale =
               String(row.pricingTier || "").toUpperCase() === "WHOLESALE";
             const businessName = String(row.businessName || "").trim();
 
             return (
-              <div style={{ display: "grid", gap: 2, maxWidth: 200 }}>
+              <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
                 <span
                   style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    overflowWrap: "anywhere",
+                    whiteSpace: "normal",
                     fontWeight: isWholesale ? 800 : undefined,
+                    lineHeight: 1.3,
                   }}
                 >
                   {isWholesale && businessName ? businessName : row.customerName}
                 </span>
                 {isWholesale ? (
-                  <Text type="secondary" style={{ fontSize: 11 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 11, overflowWrap: "anywhere" }}
+                  >
                     Contact: {row.customerName}
                   </Text>
+                ) : null}
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {row.customerPhone || "No phone number"}
+                </Text>
+                {isWholesale ? (
+                  <Tag color="geekblue" style={{ width: "fit-content", margin: 0 }}>
+                    Wholesale
+                  </Tag>
                 ) : null}
               </div>
             );
           },
         },
-        ...(!isMobile
-          ? ([
-            {
-              title: "Phone",
-              dataIndex: "customerPhone",
-              key: "customerPhone",
-              width: 140,
-            },
-          ] as any[])
-          : []),
         {
           title: "Status",
           dataIndex: "status",
           key: "status",
-          width: isMobile ? 170 : 190,
+          width: isMobile ? 164 : 180,
           render: (_: any, row: AdminOrder) => (
             <Select
               value={row.status}
@@ -550,7 +587,7 @@ function OrderTable({
               {
                 title: "Delivery",
                 key: "deliveryDate",
-                width: 150,
+                width: 145,
                 render: (_: any, row: AdminOrder) =>
                   row.requestedDeliveryDate ? (
                     <div style={{ display: "grid", gap: 2 }}>
@@ -568,38 +605,45 @@ function OrderTable({
             ] as any[])
           : []),
         {
-          title: "Packed By",
-          dataIndex: "packerInitials",
-          key: "packerInitials",
-          width: 110,
-          render: (v: any) =>
-            v ? <Tag color="blue">{String(v).toUpperCase()}</Tag> : "—",
-        },
-        {
-          title: "Bags",
-          dataIndex: "bagCount",
-          key: "bagCount",
-          width: 80,
-          render: (value: any) =>
-            Number(value) > 0 ? <Tag color="cyan">{Number(value)}</Tag> : "—",
-        },
-        {
-          title: "Packing",
+          title: "Fulfilment",
           key: "packing",
-          width: 150,
-          render: (_: any, row: AdminOrder) =>
-            row.status === "DELIVERED" ? (
-              <Tag color="green">Delivered</Tag>
-            ) : (
-              <Button type="primary" onClick={() => onOpenPacking(row)}>
-                Pack Order
-              </Button>
-            ),
+          width: isMobile ? 150 : 170,
+          render: (_: any, row: AdminOrder) => {
+            const status = String(row.status || "").toUpperCase();
+            const canPack =
+              status === "ORDER_PLACED" || status === "READY_TO_PACK";
+
+            if (status === "DELIVERED") {
+              return <Tag color="green">Delivered</Tag>;
+            }
+
+            if (canPack) {
+              return (
+                <Button type="primary" onClick={() => onOpenPacking(row)}>
+                  Pack Order
+                </Button>
+              );
+            }
+
+            return (
+              <div style={{ display: "grid", gap: 5 }}>
+                <Tag color="blue" style={{ width: "fit-content", margin: 0 }}>
+                  Packed
+                </Tag>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  By {row.packerInitials?.toUpperCase() || "—"}
+                  {Number(row.bagCount) > 0
+                    ? ` • ${Number(row.bagCount)} bag${Number(row.bagCount) === 1 ? "" : "s"}`
+                    : ""}
+                </Text>
+              </div>
+            );
+          },
         },
         {
           title: "Total",
           key: "total",
-          width: 130,
+          width: 125,
           render: (_: any, row: AdminOrder) => (
             <div style={{ display: "grid", gap: 2 }}>
               <span>{money(row.total)}</span>
@@ -609,17 +653,6 @@ function OrderTable({
             </div>
           ),
         },
-        ...(!isMobile
-          ? ([
-            {
-              title: "Created",
-              dataIndex: "createdAt",
-              key: "createdAt",
-              width: 180,
-              render: (v: string) => new Date(v).toLocaleString(),
-            },
-          ] as any[])
-          : []),
         {
           title: "",
           key: "actions",
@@ -687,7 +720,8 @@ function OrderTable({
       dataSource={orders}
       columns={columns}
       size={isMobile ? "small" : "middle"}
-      scroll={isMobile ? { x: 1040 } : undefined}
+      tableLayout="fixed"
+      scroll={{ x: isMobile ? 980 : 1050 }}
       pagination={{ pageSize: 20, showSizeChanger: false }}
       expandable={{
         expandedRowKeys,
@@ -863,6 +897,9 @@ export default function OrdersTab({
   const [schedules, setSchedules] = useState([] as DeliverySchedule[]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([] as React.Key[]);
   const [orderView, setOrderView] = useState<"active" | "archive">("active");
+  const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<
+    "ALL" | "RETAIL" | "WHOLESALE"
+  >("ALL");
 
   const [filterLocationId, setFilterLocationId] = useState("");
   const [filterScheduleId, setFilterScheduleId] = useState("");
@@ -880,6 +917,9 @@ export default function OrdersTab({
   const [deliveryRunWindowId, setDeliveryRunWindowId] = useState("");
   const [deliveryRunScheduleId, setDeliveryRunScheduleId] = useState("");
   const [deliveryRunLocationId, setDeliveryRunLocationId] = useState("");
+  const [deliveryRunPurchaseType, setDeliveryRunPurchaseType] = useState<
+    "ALL" | "RETAIL" | "WHOLESALE"
+  >("ALL");
 
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
 
@@ -1125,6 +1165,13 @@ export default function OrdersTab({
         return false;
       }
 
+      if (
+        purchaseTypeFilter !== "ALL" &&
+        String(o.pricingTier || "RETAIL").toUpperCase() !== purchaseTypeFilter
+      ) {
+        return false;
+      }
+
       if (filterLocationId && anyO.dropoffLocationId !== filterLocationId) {
         return false;
       }
@@ -1179,7 +1226,14 @@ export default function OrdersTab({
     return Array.from(byLocation.values()).sort((a, b) =>
       a.locationName.localeCompare(b.locationName),
     );
-  }, [displayOrders, schedules, filterLocationId, filterScheduleId, orderView]);
+  }, [
+    displayOrders,
+    schedules,
+    filterLocationId,
+    filterScheduleId,
+    orderView,
+    purchaseTypeFilter,
+  ]);
 
   const visibleOrderSummary = useMemo(() => {
     const visibleOrders = grouped.flatMap((locGroup) => [
@@ -1732,9 +1786,15 @@ export default function OrdersTab({
   }
 
   async function exportPackingList() {
+    const selectedIds = new Set(selectedRowKeys.map(String));
+    const exportingSelection = selectedIds.size > 0;
     const ordersToExport = displayOrders.filter((o) => {
       if (String(o.status || "").toUpperCase() === "DELIVERED") {
         return false;
+      }
+
+      if (exportingSelection) {
+        return selectedIds.has(String(o.id));
       }
 
       const wholesale = isWholesaleOrder(o);
@@ -1846,8 +1906,9 @@ export default function OrdersTab({
       })),
     ];
 
-    const label =
-      packingScheduleId === WHOLESALE_PACKING_FILTER
+    const label = exportingSelection
+      ? `selected_${dayjs().format("YYYY-MM-DD")}`
+      : packingScheduleId === WHOLESALE_PACKING_FILTER
         ? `wholesale_${dayjs().format("YYYY-MM-DD")}`
         : targetSchedule
           ? `${targetSchedule.dropoffLocation.name}_cutoff-${fmtDate(targetSchedule.cutoffDate)}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
@@ -1870,21 +1931,32 @@ export default function OrdersTab({
   }
 
   async function exportDeliveryList() {
+    const selectedIds = new Set(selectedRowKeys.map(String));
+    const exportingSelection = selectedIds.size > 0;
+    const selectedWindow = windows.find(
+      (window) => window.id === selectedDeliveryRunWindowId,
+    );
     const ordersToExport = displayOrders.filter((o) => {
-      const wholesale = isWholesaleOrder(o);
+      if (exportingSelection) {
+        return selectedIds.has(String(o.id));
+      }
+
+      if (
+        deliveryRunPurchaseType !== "ALL" &&
+        String(o.pricingTier || "RETAIL").toUpperCase() !==
+          deliveryRunPurchaseType
+      ) {
+        return false;
+      }
 
       if (selectedDeliveryRunWindowId) {
-        if (
-          !wholesale &&
-          String((o as any).windowId || "") !== selectedDeliveryRunWindowId
-        ) {
+        if (!orderBelongsToWindow(o, selectedWindow)) {
           return false;
         }
       }
 
       if (deliveryRunLocationId) {
         if (
-          wholesale ||
           String((o as any).dropoffLocationId || "") !== deliveryRunLocationId
         ) {
           return false;
@@ -1893,7 +1965,6 @@ export default function OrdersTab({
 
       if (deliveryRunScheduleId) {
         if (
-          wholesale ||
           String((o as any).deliveryScheduleId || "") !== deliveryRunScheduleId
         ) {
           return false;
@@ -2036,7 +2107,9 @@ export default function OrdersTab({
       { width: 14 },
     ];
 
-    const label = targetSchedule
+    const label = exportingSelection
+      ? `selected_${dayjs().format("YYYY-MM-DD")}`
+      : targetSchedule
       ? `${targetSchedule.dropoffLocation.name}_delivery-${fmtDate(targetSchedule.deliveryDate)}`
           .replace(/\s+/g, "-")
           .replace(/,/g, "")
@@ -2047,7 +2120,9 @@ export default function OrdersTab({
         sheet: "Delivery List",
         columns,
       }).toFile(`delivery-list_${label}.xlsx`);
-      message.success(`Exported ${ordersToExport.length} active orders`);
+      message.success(
+        `Exported ${ordersToExport.length}${exportingSelection ? " selected" : " active"} orders`,
+      );
     } catch (error) {
       console.error("Delivery list export failed:", error);
       message.error("Could not generate the Excel delivery list");
@@ -2056,12 +2131,25 @@ export default function OrdersTab({
 
   function exportDeliveryRunPdf() {
     const params = new URLSearchParams();
+    const selectedIds = selectedRowKeys.map(String);
 
-    if (selectedDeliveryRunWindowId) {
-      params.set("windowId", selectedDeliveryRunWindowId);
+    if (selectedIds.length > 100) {
+      message.warning("Select no more than 100 orders for one PDF export");
+      return;
     }
-    if (deliveryRunLocationId) params.set("locationId", deliveryRunLocationId);
-    if (deliveryRunScheduleId) params.set("scheduleId", deliveryRunScheduleId);
+
+    if (selectedIds.length) {
+      params.set("ids", selectedIds.join(","));
+    } else {
+      if (selectedDeliveryRunWindowId) {
+        params.set("windowId", selectedDeliveryRunWindowId);
+      }
+      if (deliveryRunLocationId) params.set("locationId", deliveryRunLocationId);
+      if (deliveryRunScheduleId) params.set("scheduleId", deliveryRunScheduleId);
+      if (deliveryRunPurchaseType !== "ALL") {
+        params.set("purchaseType", deliveryRunPurchaseType);
+      }
+    }
 
     window.open(
       `${API_BASE}/api/admin/orders/delivery-run.pdf?${params.toString()}`,
@@ -2276,6 +2364,22 @@ export default function OrdersTab({
               />
 
               <Select
+                aria-label="Filter orders by purchase type"
+                style={{ width: 170 }}
+                value={purchaseTypeFilter}
+                onChange={(value) => {
+                  setPurchaseTypeFilter(value);
+                  setSelectedRowKeys([]);
+                  setExpandedRowKeys([]);
+                }}
+                options={[
+                  { value: "ALL", label: "All purchases" },
+                  { value: "RETAIL", label: "Retail only" },
+                  { value: "WHOLESALE", label: "Wholesale only" },
+                ]}
+              />
+
+              <Select
                 allowClear
                 placeholder="Filter by location"
                 style={{ width: 200 }}
@@ -2283,6 +2387,7 @@ export default function OrdersTab({
                 onChange={(v) => {
                   setFilterLocationId(v || "");
                   setFilterScheduleId("");
+                  setSelectedRowKeys([]);
                 }}
                 options={locationOptions}
               />
@@ -2292,7 +2397,10 @@ export default function OrdersTab({
                 placeholder="Filter by schedule"
                 style={{ width: 360 }}
                 value={filterScheduleId || undefined}
-                onChange={(v) => setFilterScheduleId(v || "")}
+                onChange={(v) => {
+                  setFilterScheduleId(v || "");
+                  setSelectedRowKeys([]);
+                }}
                 options={scheduleOptionsForFilter}
               />
 
@@ -2383,6 +2491,7 @@ export default function OrdersTab({
                     value={packingScheduleId || undefined}
                     onChange={(v) => setPackingScheduleId(v || "")}
                     options={packingScheduleOptions}
+                    disabled={selectedRowKeys.length > 0}
                   />
 
                   <Button
@@ -2391,7 +2500,9 @@ export default function OrdersTab({
                     disabled={!displayOrders.length}
                     style={{ justifySelf: "start" }}
                   >
-                    Export Excel
+                    {selectedRowKeys.length
+                      ? `Export ${selectedRowKeys.length} selected`
+                      : "Export Excel"}
                   </Button>
                 </div>
               </Card>
@@ -2399,9 +2510,8 @@ export default function OrdersTab({
               <Card size="small">
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "140px minmax(180px, 220px) minmax(260px, 320px) auto auto",
+                    display: "flex",
+                    flexWrap: "wrap",
                     gap: 12,
                     alignItems: "center",
                   }}
@@ -2409,12 +2519,29 @@ export default function OrdersTab({
 	                  <Tag color="blue" style={{ margin: 0, justifySelf: "start" }}>
 	                    Delivery notes PDF
 	                  </Tag>
-	
+
+                  <Select
+                    aria-label="Filter delivery exports by purchase type"
+                    style={{ width: 180 }}
+                    value={deliveryRunPurchaseType}
+                    disabled={selectedRowKeys.length > 0}
+                    onChange={(value) => {
+                      setDeliveryRunPurchaseType(value);
+                      setDeliveryRunScheduleId("");
+                    }}
+                    options={[
+                      { value: "ALL", label: "All purchases" },
+                      { value: "RETAIL", label: "Retail only" },
+                      { value: "WHOLESALE", label: "Wholesale only" },
+                    ]}
+                  />
+
 	                  <Select
 	                    allowClear
 	                    placeholder="Filter by location"
-                    style={{ width: "100%" }}
+                    style={{ width: 210 }}
                     value={deliveryRunLocationId || undefined}
+                    disabled={selectedRowKeys.length > 0}
                     onChange={(v) => {
                       setDeliveryRunLocationId(v || "");
                       setDeliveryRunScheduleId("");
@@ -2425,8 +2552,9 @@ export default function OrdersTab({
                   <Select
                     allowClear
                     placeholder="Filter by delivery slot"
-                    style={{ width: "100%" }}
+                    style={{ flex: "1 1 260px", minWidth: 240 }}
                     value={deliveryRunScheduleId || undefined}
+                    disabled={selectedRowKeys.length > 0}
                     onChange={(v) => setDeliveryRunScheduleId(v || "")}
                     options={deliveryRunScheduleOptions}
                   />
@@ -2436,7 +2564,9 @@ export default function OrdersTab({
                     onClick={exportDeliveryList}
                     style={{ justifySelf: "start" }}
                   >
-                    Delivery list
+                    {selectedRowKeys.length
+                      ? `Excel (${selectedRowKeys.length})`
+                      : "Delivery list"}
                   </Button>
 
                   <Button
@@ -2444,7 +2574,9 @@ export default function OrdersTab({
                     onClick={exportDeliveryRunPdf}
                     style={{ justifySelf: "start" }}
                   >
-                    Delivery notes
+                    {selectedRowKeys.length
+                      ? `Notes (${selectedRowKeys.length})`
+                      : "Delivery notes"}
                   </Button>
                 </div>
               </Card>
@@ -2486,6 +2618,22 @@ export default function OrdersTab({
             options={[
               { label: "Active", value: "active" },
               { label: "Archive", value: "archive" },
+            ]}
+          />
+
+          <Select
+            aria-label="Filter orders by purchase type"
+            size="large"
+            value={purchaseTypeFilter}
+            onChange={(value) => {
+              setPurchaseTypeFilter(value);
+              setSelectedRowKeys([]);
+              setExpandedRowKeys([]);
+            }}
+            options={[
+              { value: "ALL", label: "All purchases" },
+              { value: "RETAIL", label: "Retail only" },
+              { value: "WHOLESALE", label: "Wholesale only" },
             ]}
           />
         </div>
@@ -2555,7 +2703,9 @@ export default function OrdersTab({
             }}
           >
             <Text type="secondary">
-              Selected orders: {selectedRowKeys.length}
+              {selectedRowKeys.length
+                ? `${selectedRowKeys.length} selected — exports below will use only these orders.`
+                : "Select orders in the table to export only those orders."}
             </Text>
           </div>
         </>
@@ -2656,6 +2806,14 @@ export default function OrdersTab({
         onClose={() => setPackingOpen(false)}
       >
         <div style={{ display: "grid", gap: 12 }}>
+          {selectedRowKeys.length ? (
+            <Alert
+              type="info"
+              showIcon
+              message={`${selectedRowKeys.length} selected order${selectedRowKeys.length === 1 ? "" : "s"}`}
+              description="The Excel file will contain only the selected orders."
+            />
+          ) : null}
           <Select
             allowClear
             placeholder="All schedules"
@@ -2664,6 +2822,7 @@ export default function OrdersTab({
             onChange={(v) => setPackingScheduleId(v || "")}
             options={packingScheduleOptions}
             size="large"
+            disabled={selectedRowKeys.length > 0}
           />
 
           <Button
@@ -2673,7 +2832,9 @@ export default function OrdersTab({
             icon={<DownloadOutlined />}
             block
           >
-            Export Excel
+            {selectedRowKeys.length
+              ? `Export ${selectedRowKeys.length} selected`
+              : "Export Excel"}
           </Button>
         </div>
       </Drawer>
@@ -2686,11 +2847,37 @@ export default function OrdersTab({
         onClose={() => setDeliveryRunOpen(false)}
 	      >
 	        <div style={{ display: "grid", gap: 12 }}>
+	          {selectedRowKeys.length ? (
+	            <Alert
+	              type="info"
+	              showIcon
+	              message={`${selectedRowKeys.length} selected order${selectedRowKeys.length === 1 ? "" : "s"}`}
+	              description="Both exports will contain only the selected orders."
+	            />
+	          ) : null}
+
+	          <Select
+	            aria-label="Filter delivery exports by purchase type"
+	            size="large"
+	            value={deliveryRunPurchaseType}
+	            disabled={selectedRowKeys.length > 0}
+	            onChange={(value) => {
+	              setDeliveryRunPurchaseType(value);
+	              setDeliveryRunScheduleId("");
+	            }}
+	            options={[
+	              { value: "ALL", label: "All purchases" },
+	              { value: "RETAIL", label: "Retail only" },
+	              { value: "WHOLESALE", label: "Wholesale only" },
+	            ]}
+	          />
+
 	          <Select
 	            allowClear
 	            placeholder="Filter by location"
             style={{ width: "100%" }}
             value={deliveryRunLocationId || undefined}
+            disabled={selectedRowKeys.length > 0}
             onChange={(v) => {
               setDeliveryRunLocationId(v || "");
               setDeliveryRunScheduleId("");
@@ -2704,6 +2891,7 @@ export default function OrdersTab({
             placeholder="Filter by delivery slot"
             style={{ width: "100%" }}
             value={deliveryRunScheduleId || undefined}
+            disabled={selectedRowKeys.length > 0}
             onChange={(v) => setDeliveryRunScheduleId(v || "")}
             options={deliveryRunScheduleOptions}
             size="large"
@@ -2716,7 +2904,9 @@ export default function OrdersTab({
             onClick={exportDeliveryList}
             block
           >
-            Export delivery list
+            {selectedRowKeys.length
+              ? `Export ${selectedRowKeys.length} selected to Excel`
+              : "Export delivery list"}
           </Button>
 
           <Button
@@ -2725,7 +2915,9 @@ export default function OrdersTab({
             onClick={exportDeliveryRunPdf}
             block
           >
-            Export delivery notes
+            {selectedRowKeys.length
+              ? `Export ${selectedRowKeys.length} selected notes`
+              : "Export delivery notes"}
           </Button>
         </div>
       </Drawer>

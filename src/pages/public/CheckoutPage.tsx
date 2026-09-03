@@ -78,6 +78,18 @@ type DiscountPreview = {
   codeDiscountTotal: number;
   discountTotal: number;
   total: number;
+  lines: DiscountPreviewLine[];
+};
+
+type DiscountPreviewLine = {
+  productId: string;
+  lineSubtotal: number;
+  productDiscountPercent: number;
+  productDiscountTotal: number;
+  codeDiscountApplies: boolean;
+  codeDiscountTotal: number;
+  discountTotal: number;
+  lineTotal: number;
 };
 
 function asInt(v: any, fallback: number) {
@@ -136,6 +148,14 @@ function getEstimatedLineTotal(item: any): number {
   }
 
   return qty * avgWeightKg * unitPrice;
+}
+
+function getEstimatedPricingUnits(item: any): number {
+  const qty = asInt(item?.qty, 1);
+  if (!isEstimatedWeightItem(item)) return qty;
+
+  const avgWeightKg = getItemAvgWeightKg(item);
+  return avgWeightKg ? qty * avgWeightKg : qty;
 }
 
 function normalizeIntlPhone(phone: string) {
@@ -257,6 +277,14 @@ export default function CheckoutPage() {
   const cartTotalAfterCode = discountPreview
     ? discountPreview.total
     : cartSubtotal;
+
+  const discountLinesByProductId = useMemo(
+    () =>
+      new Map(
+        (discountPreview?.lines || []).map((line) => [line.productId, line]),
+      ),
+    [discountPreview],
+  );
 
   const hasEstimatedPricing = useMemo(() => {
     return items.some((it) => isEstimatedWeightItem(it));
@@ -1115,6 +1143,43 @@ export default function CheckoutPage() {
                     const lineTotal = getEstimatedLineTotal(it);
                     const avgWeightKg = getItemAvgWeightKg(it);
                     const isEstimated = isEstimatedWeightItem(it);
+                    const discountLine = discountLinesByProductId.get(pid);
+                    const pricingUnits = getEstimatedPricingUnits(it);
+                    const productOriginalUnitPrice = asMoney(
+                      (it.product as any).originalPrice,
+                    );
+                    const hasStoredProductDiscount =
+                      Number((it.product as any).discountPercent || 0) > 0 &&
+                      productOriginalUnitPrice > unitPrice;
+                    const hasCodeDiscount =
+                      Number(discountLine?.codeDiscountTotal || 0) > 0;
+                    const hasProductDiscount = discountLine
+                      ? Number(discountLine.productDiscountTotal || 0) > 0
+                      : hasStoredProductDiscount;
+                    const hasLineDiscount =
+                      hasCodeDiscount || hasProductDiscount;
+                    const originalLineTotal = discountLine
+                      ? Number(discountLine.lineSubtotal)
+                      : hasStoredProductDiscount
+                        ? productOriginalUnitPrice * pricingUnits
+                        : lineTotal;
+                    const discountedLineTotal = discountLine
+                      ? Number(discountLine.lineTotal)
+                      : lineTotal;
+                    const originalUnitPrice =
+                      pricingUnits > 0
+                        ? originalLineTotal / pricingUnits
+                        : unitPrice;
+                    const discountedUnitPrice =
+                      pricingUnits > 0
+                        ? discountedLineTotal / pricingUnits
+                        : unitPrice;
+                    const discountBadge =
+                      hasCodeDiscount && hasProductDiscount
+                        ? "SALE + CODE"
+                        : hasCodeDiscount
+                          ? `${discountPreview?.code || "CODE"} APPLIED`
+                          : `${Number((it.product as any).discountPercent || discountLine?.productDiscountPercent || 0).toFixed(0)}% OFF`;
 
                     return (
                       <div
@@ -1196,22 +1261,92 @@ export default function CheckoutPage() {
 
                               {unitPrice > 0 ? (
                                 <div style={{ display: "grid", gap: 2 }}>
-                                  <Text
-                                    type="secondary"
-                                    style={{ fontSize: 12 }}
-                                  >
-                                    {`$${unitPrice.toFixed(2)} × ${qty}`}
-                                  </Text>
+                                  {hasLineDiscount ? (
+                                    <>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          gap: 6,
+                                          alignItems: "center",
+                                          flexWrap: "wrap",
+                                          marginTop: 3,
+                                        }}
+                                      >
+                                        <Tag
+                                          color="green"
+                                          style={{ marginInlineEnd: 0 }}
+                                        >
+                                          {discountBadge}
+                                        </Tag>
+                                        <Text
+                                          delete
+                                          type="secondary"
+                                          style={{ fontSize: 12 }}
+                                        >
+                                          ${originalUnitPrice.toFixed(2)}
+                                        </Text>
+                                        <Text
+                                          strong
+                                          style={{
+                                            color: "var(--aca-forest)",
+                                            fontSize: 14,
+                                          }}
+                                        >
+                                          ${discountedUnitPrice.toFixed(2)}
+                                        </Text>
+                                        <Text
+                                          type="secondary"
+                                          style={{ fontSize: 12 }}
+                                        >
+                                          × {qty}
+                                        </Text>
+                                      </div>
 
-                                  <Text
-                                    style={{
-                                      fontSize: 15,
-                                      fontWeight: 800,
-                                      color: "var(--aca-forest)",
-                                    }}
-                                  >
-                                    Item total: ${lineTotal.toFixed(2)}
-                                  </Text>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          gap: 7,
+                                          alignItems: "baseline",
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        <Text strong style={{ fontSize: 13 }}>
+                                          Item total:
+                                        </Text>
+                                        <Text delete type="secondary">
+                                          ${originalLineTotal.toFixed(2)}
+                                        </Text>
+                                        <Text
+                                          style={{
+                                            fontSize: 16,
+                                            fontWeight: 900,
+                                            color: "var(--aca-forest)",
+                                          }}
+                                        >
+                                          ${discountedLineTotal.toFixed(2)}
+                                        </Text>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Text
+                                        type="secondary"
+                                        style={{ fontSize: 12 }}
+                                      >
+                                        {`$${unitPrice.toFixed(2)} × ${qty}`}
+                                      </Text>
+
+                                      <Text
+                                        style={{
+                                          fontSize: 15,
+                                          fontWeight: 800,
+                                          color: "var(--aca-forest)",
+                                        }}
+                                      >
+                                        Item total: ${lineTotal.toFixed(2)}
+                                      </Text>
+                                    </>
+                                  )}
 
                                   {isEstimated ? (
                                     <Text

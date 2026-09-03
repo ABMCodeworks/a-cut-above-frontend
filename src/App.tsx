@@ -101,7 +101,7 @@ export default function App() {
         <Content
           style={{
             padding: 24,
-            maxWidth: 1280,
+            maxWidth: isAdminRoute ? 1800 : 1280,
             margin: "0 auto",
             width: "100%",
           }}
