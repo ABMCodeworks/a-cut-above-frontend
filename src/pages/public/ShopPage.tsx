@@ -180,9 +180,8 @@ export default function ShopPage() {
 
   const isMobile = !screens.md;
   const showSummary = !!screens.lg;
-  const [pricingTier, setPricingTier] = useState<"RETAIL" | "WHOLESALE">(
-    () =>
-      localStorage.getItem("aca_wholesale_pin") ? "WHOLESALE" : "RETAIL",
+  const [pricingTier, setPricingTier] = useState<"RETAIL" | "WHOLESALE">(() =>
+    localStorage.getItem("aca_wholesale_pin") ? "WHOLESALE" : "RETAIL",
   );
   const isWholesale = pricingTier === "WHOLESALE";
 
@@ -523,9 +522,7 @@ export default function ShopPage() {
             (product) => String(product.id) === String(row.product.id),
           ) ?? row.product;
 
-        return (
-          sum + summaryLineTotal(currentProduct, Number(row.qty || 1))
-        );
+        return sum + summaryLineTotal(currentProduct, Number(row.qty || 1));
       }, 0),
     [items, products],
   );
@@ -543,7 +540,9 @@ export default function ShopPage() {
 
     if (u === "kg") {
       const avgWeightG = summaryAvgWeightG(p);
-      return avgWeightG ? `Est. ${fmtGrams(avgWeightG, "g")} pack` : "Price / kg";
+      return avgWeightG
+        ? `Est. ${fmtGrams(avgWeightG, "g")} pack`
+        : "Price / kg";
     }
 
     return "Price / pack";
@@ -682,7 +681,7 @@ export default function ShopPage() {
           className="aca-displayTitle"
           style={{ marginBottom: 4 }}
         >
-          {isWholesale ? "Wholesale ordering" : "From our farm"}
+          {isWholesale ? "Wholesale ordering" : "From our farm to your table"}
         </Title>
 
         <Text className="aca-subtitle">
@@ -933,9 +932,7 @@ export default function ShopPage() {
             </div>
 
             {showSummary ? (
-              <div
-                className="aca-sidebarCard aca-orderSummaryCard"
-              >
+              <div className="aca-sidebarCard aca-orderSummaryCard">
                 <div
                   style={{
                     display: "flex",
@@ -975,9 +972,8 @@ export default function ShopPage() {
                       const img = resolveImageUrl(summaryProduct.imageUrl);
                       const unitLabel = summaryUnitLabel(summaryProduct);
                       const unitPrice = summaryUnitPrice(summaryProduct);
-                      const estimatedPackPrice = summaryEstimatedPackPrice(
-                        summaryProduct,
-                      );
+                      const estimatedPackPrice =
+                        summaryEstimatedPackPrice(summaryProduct);
                       const isEstimated =
                         String(summaryProduct.unit || "").toLowerCase() ===
                           "kg" && summaryAvgWeightG(summaryProduct) !== null;
@@ -1097,7 +1093,9 @@ export default function ShopPage() {
                                 >
                                   {isEstimated ? "Estimated total" : "Total"}:{" "}
                                   <span style={{ color: "var(--aca-forest)" }}>
-                                    {money(summaryLineTotal(summaryProduct, qty))}
+                                    {money(
+                                      summaryLineTotal(summaryProduct, qty),
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -1257,294 +1255,303 @@ export default function ShopPage() {
           ) : (
             <Row gutter={[16, 16]} align="stretch">
               {filtered.map((p) => {
-              const stock = stockFor(p);
-              const soldOut = isSoldOut(p);
-              const remaining = remainingStock(p);
-              const currentQty = Math.max(1, qtyMap[p.id] ?? 1);
+                const stock = stockFor(p);
+                const soldOut = isSoldOut(p);
+                const remaining = remainingStock(p);
+                const currentQty = Math.max(1, qtyMap[p.id] ?? 1);
 
-              const stockTag =
-                stock === null ? (
-                  <Tag style={{ marginInlineEnd: 0 }}>Wholesale</Tag>
-                ) : (
-                  <Tag
-                    color={soldOut ? "red" : "green"}
-                    style={{ marginInlineEnd: 0 }}
+                const stockTag =
+                  stock === null ? (
+                    <Tag style={{ marginInlineEnd: 0 }}>Wholesale</Tag>
+                  ) : (
+                    <Tag
+                      color={soldOut ? "red" : "green"}
+                      style={{ marginInlineEnd: 0 }}
+                    >
+                      {soldOut ? "Sold out" : `In stock: ${stock}`}
+                    </Tag>
+                  );
+
+                const imgSrc = resolveImageUrl(p.imageUrl);
+                const unitLower = (p.unit || "").toLowerCase();
+
+                const displayPrice =
+                  unitLower === "kg"
+                    ? money(p.pricePerKg ?? p.price)
+                    : money(p.pricePerPack ?? p.price);
+                const originalDisplayPrice =
+                  Number(p.discountPercent || 0) > 0 &&
+                  Number(p.originalPrice || 0) > Number(p.price || 0)
+                    ? money(p.originalPrice)
+                    : null;
+
+                const displayLabel =
+                  unitLower === "kg" ? "Price / kg" : "Price / pack";
+
+                const addDisabled =
+                  (!isWholesale && !windowState.open) ||
+                  soldOut ||
+                  locationUnavailable ||
+                  (remaining !== null && remaining <= 0);
+
+                const avgWeightLabel = fmtGrams(p.avgWeightG, unitLower);
+
+                return (
+                  <Col
+                    key={p.id}
+                    xs={12}
+                    sm={12}
+                    lg={8}
+                    style={{ display: "flex" }}
                   >
-                    {soldOut ? "Sold out" : `In stock: ${stock}`}
-                  </Tag>
-                );
-
-              const imgSrc = resolveImageUrl(p.imageUrl);
-              const unitLower = (p.unit || "").toLowerCase();
-
-              const displayPrice =
-                unitLower === "kg"
-                  ? money(p.pricePerKg ?? p.price)
-                  : money(p.pricePerPack ?? p.price);
-              const originalDisplayPrice =
-                Number(p.discountPercent || 0) > 0 &&
-                Number(p.originalPrice || 0) > Number(p.price || 0)
-                  ? money(p.originalPrice)
-                  : null;
-
-              const displayLabel =
-                unitLower === "kg" ? "Price / kg" : "Price / pack";
-
-              const addDisabled =
-                (!isWholesale && !windowState.open) ||
-                soldOut ||
-                locationUnavailable ||
-                (remaining !== null && remaining <= 0);
-
-              const avgWeightLabel = fmtGrams(p.avgWeightG, unitLower);
-
-              return (
-                <Col
-                  key={p.id}
-                  xs={12}
-                  sm={12}
-                  lg={8}
-                  style={{ display: "flex" }}
-                >
-                  <Card
-                    loading={loading}
-                    className="aca-productCard"
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                    styles={{
-                      body: {
+                    <Card
+                      loading={loading}
+                      className="aca-productCard"
+                      style={{
+                        width: "100%",
                         display: "flex",
                         flexDirection: "column",
-                        flex: 1,
-                        padding: isMobile ? 10 : 16,
-                      },
-                    }}
-                    title={
-                      isMobile ? (
-                        <div style={{ minWidth: 0 }}>
-                          <div
+                      }}
+                      styles={{
+                        body: {
+                          display: "flex",
+                          flexDirection: "column",
+                          flex: 1,
+                          padding: isMobile ? 10 : 16,
+                        },
+                      }}
+                      title={
+                        isMobile ? (
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              className="aca-productTitle"
+                              style={{
+                                whiteSpace: "normal",
+                                overflowWrap: "anywhere",
+                                lineHeight: 1.2,
+                                fontSize: 14,
+                              }}
+                            >
+                              {p.name}
+                            </div>
+
+                            <div style={{ marginTop: 6 }}>{stockTag}</div>
+                          </div>
+                        ) : (
+                          <span
                             className="aca-productTitle"
                             style={{
+                              display: "block",
                               whiteSpace: "normal",
                               overflowWrap: "anywhere",
-                              lineHeight: 1.2,
-                              fontSize: 14,
+                              lineHeight: 1.25,
                             }}
                           >
                             {p.name}
-                          </div>
-
-                          <div style={{ marginTop: 6 }}>{stockTag}</div>
-                        </div>
-                      ) : (
-                        <span
-                          className="aca-productTitle"
+                          </span>
+                        )
+                      }
+                      extra={isMobile ? null : stockTag}
+                      cover={
+                        <button
+                          type="button"
+                          className="aca-productMedia"
+                          onClick={() => {
+                            if (imgSrc) {
+                              setPreviewImage({
+                                src: imgSrc,
+                                alt: p.name,
+                              });
+                            }
+                          }}
                           style={{
+                            width: "100%",
+                            border: 0,
+                            padding: 0,
+                            background: "transparent",
+                            cursor: imgSrc ? "zoom-in" : "default",
+                            position: "relative",
+                            overflow: "hidden",
                             display: "block",
-                            whiteSpace: "normal",
-                            overflowWrap: "anywhere",
-                            lineHeight: 1.25,
                           }}
                         >
-                          {p.name}
-                        </span>
-                      )
-                    }
-                    extra={isMobile ? null : stockTag}
-                    cover={
-                      <button
-                        type="button"
-                        className="aca-productMedia"
-                        onClick={() => {
-                          if (imgSrc) {
-                            setPreviewImage({
-                              src: imgSrc,
-                              alt: p.name,
-                            });
-                          }
-                        }}
-                        style={{
-                          width: "100%",
-                          border: 0,
-                          padding: 0,
-                          background: "transparent",
-                          cursor: imgSrc ? "zoom-in" : "default",
-                          position: "relative",
-                          overflow: "hidden",
-                          display: "block",
-                        }}
-                      >
-                        {imgSrc ? (
-                          <img
-                            src={imgSrc}
-                            alt={p.name}
-                            style={{
-                              width: "100%",
-                              height: isMobile ? 145 : 220,
-                              objectFit: "cover",
-                              display: "block",
-                            }}
-                            onError={(e) => {
-                              (
-                                e.currentTarget as HTMLImageElement
-                              ).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div
-                            className="aca-productMedia__placeholder"
-                            style={{ height: isMobile ? 145 : 220 }}
-                          />
-                        )}
+                          {imgSrc ? (
+                            <img
+                              src={imgSrc}
+                              alt={p.name}
+                              style={{
+                                width: "100%",
+                                height: isMobile ? 145 : 220,
+                                objectFit: "cover",
+                                display: "block",
+                              }}
+                              onError={(e) => {
+                                (
+                                  e.currentTarget as HTMLImageElement
+                                ).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div
+                              className="aca-productMedia__placeholder"
+                              style={{ height: isMobile ? 145 : 220 }}
+                            />
+                          )}
 
-                        {p.cutType ? (
-                          <div className="aca-productBadge">{p.cutType}</div>
-                        ) : null}
-                        {originalDisplayPrice ? (
-                          <div className="aca-productDiscountBadge">
-                            {Number(p.discountPercent).toFixed(0)}% OFF
-                          </div>
-                        ) : null}
-                      </button>
-                    }
-                  >
-                    {p.description && !isMobile ? (
-                      <Text className="aca-productDesc">{p.description}</Text>
-                    ) : null}
-
-                    <div
-                      className="aca-priceBlock"
-                      style={{ marginTop: isMobile ? 0 : 6 }}
+                          {p.cutType ? (
+                            <div className="aca-productBadge">{p.cutType}</div>
+                          ) : null}
+                          {originalDisplayPrice ? (
+                            <div className="aca-productDiscountBadge">
+                              {Number(p.discountPercent).toFixed(0)}% OFF
+                            </div>
+                          ) : null}
+                        </button>
+                      }
                     >
-                      <div
-                        className="aca-priceRow"
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "minmax(0, 1fr) auto",
-                          alignItems: "baseline",
-                          columnGap: 8,
-                          position: "relative",
-                          margin: isMobile ? "0 0 6px" : undefined,
-                        }}
-                      >
-                        <Text
-                          type="secondary"
-                          style={{ fontSize: isMobile ? 12 : undefined }}
-                        >
-                          {displayLabel}
-                        </Text>
+                      {p.description && !isMobile ? (
+                        <Text className="aca-productDesc">{p.description}</Text>
+                      ) : null}
 
-                        <Text
-                          strong
-                          className="aca-priceVal"
+                      <div
+                        className="aca-priceBlock"
+                        style={{ marginTop: isMobile ? 0 : 6 }}
+                      >
+                        <div
+                          className="aca-priceRow"
                           style={{
-                            fontSize: isMobile ? 15 : undefined,
-                            position: originalDisplayPrice ? "relative" : undefined,
-                            top: originalDisplayPrice ? 8 : undefined,
+                            display: "grid",
+                            gridTemplateColumns: "minmax(0, 1fr) auto",
+                            alignItems: "baseline",
+                            columnGap: 8,
+                            position: "relative",
+                            margin: isMobile ? "0 0 6px" : undefined,
                           }}
                         >
-                          {displayPrice}
-                        </Text>
+                          <Text
+                            type="secondary"
+                            style={{ fontSize: isMobile ? 12 : undefined }}
+                          >
+                            {displayLabel}
+                          </Text>
 
-                        {originalDisplayPrice ? (
-                          <div
+                          <Text
+                            strong
+                            className="aca-priceVal"
                             style={{
-                              position: "absolute",
-                              top: -16,
-                              right: 0,
-                              whiteSpace: "nowrap",
-                              pointerEvents: "none",
+                              fontSize: isMobile ? 15 : undefined,
+                              position: originalDisplayPrice
+                                ? "relative"
+                                : undefined,
+                              top: originalDisplayPrice ? 8 : undefined,
                             }}
                           >
-                            <Space size={6} wrap>
-                              <Tag color="green" style={{ marginInlineEnd: 0 }}>
-                                Discount {Number(p.discountPercent).toFixed(0)}%
-                              </Tag>
-                              <Text delete type="secondary">
-                                {originalDisplayPrice}
-                              </Text>
-                            </Space>
+                            {displayPrice}
+                          </Text>
+
+                          {originalDisplayPrice ? (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: -16,
+                                right: 0,
+                                whiteSpace: "nowrap",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <Space size={6} wrap>
+                                <Tag
+                                  color="green"
+                                  style={{ marginInlineEnd: 0 }}
+                                >
+                                  Discount{" "}
+                                  {Number(p.discountPercent).toFixed(0)}%
+                                </Tag>
+                                <Text delete type="secondary">
+                                  {originalDisplayPrice}
+                                </Text>
+                              </Space>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {!isMobile ? (
+                          <div className="aca-unitHint">
+                            <Text type="secondary">Sold by: Pack</Text>
+                          </div>
+                        ) : null}
+
+                        {avgWeightLabel ? (
+                          <div
+                            className="aca-unitHint"
+                            style={{ marginTop: isMobile ? 4 : 2 }}
+                          >
+                            <Text
+                              type="secondary"
+                              style={{ fontSize: isMobile ? 11 : undefined }}
+                            >
+                              Avg weight: <b>{avgWeightLabel}</b>
+                            </Text>
+                          </div>
+                        ) : null}
+
+                        {stock !== null ? (
+                          <div
+                            className="aca-unitHint"
+                            style={{ marginTop: 4 }}
+                          >
+                            <Text
+                              type="secondary"
+                              style={{ fontSize: isMobile ? 11 : undefined }}
+                            >
+                              Remaining: <b>{remaining} pack/s</b>
+                            </Text>
                           </div>
                         ) : null}
                       </div>
 
-                      {!isMobile ? (
-                        <div className="aca-unitHint">
-                          <Text type="secondary">Sold by: Pack</Text>
-                        </div>
-                      ) : null}
+                      <div style={{ flex: 1 }} />
 
-                      {avgWeightLabel ? (
-                        <div
-                          className="aca-unitHint"
-                          style={{ marginTop: isMobile ? 4 : 2 }}
-                        >
-                          <Text
-                            type="secondary"
-                            style={{ fontSize: isMobile ? 11 : undefined }}
-                          >
-                            Avg weight: <b>{avgWeightLabel}</b>
-                          </Text>
-                        </div>
-                      ) : null}
-
-                      {stock !== null ? (
-                        <div className="aca-unitHint" style={{ marginTop: 4 }}>
-                          <Text
-                            type="secondary"
-                            style={{ fontSize: isMobile ? 11 : undefined }}
-                          >
-                            Remaining: <b>{remaining} pack/s</b>
-                          </Text>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div style={{ flex: 1 }} />
-
-                    <div
-                      className="aca-productActions"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr",
-                        gap: 8,
-                        marginTop: 12,
-                      }}
-                    >
-                      <InputNumber
-                        min={1}
-                        value={currentQty}
-                        disabled={addDisabled}
-                        style={{ width: "100%" }}
-                        size={isMobile ? "middle" : "large"}
-                        onChange={(v) => {
-                          const desired = Math.max(1, Number(v || 1));
-
-                          setQtyMap((m) => ({ ...m, [p.id]: desired }));
+                      <div
+                        className="aca-productActions"
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr",
+                          gap: 8,
+                          marginTop: 12,
                         }}
-                      />
-
-                      <Button
-                        type="primary"
-                        size={isMobile ? "middle" : "large"}
-                        disabled={addDisabled}
-                        onClick={() => confirmAddToCart(p, currentQty)}
-                        className="aca-addBtn"
-                        block
                       >
-                        {locationUnavailable
-                          ? "Unavailable"
-                          : addDisabled
-                            ? "Sold out"
-                            : "Add to cart"}
-                      </Button>
-                    </div>
-                  </Card>
-                </Col>
-              );
+                        <InputNumber
+                          min={1}
+                          value={currentQty}
+                          disabled={addDisabled}
+                          style={{ width: "100%" }}
+                          size={isMobile ? "middle" : "large"}
+                          onChange={(v) => {
+                            const desired = Math.max(1, Number(v || 1));
+
+                            setQtyMap((m) => ({ ...m, [p.id]: desired }));
+                          }}
+                        />
+
+                        <Button
+                          type="primary"
+                          size={isMobile ? "middle" : "large"}
+                          disabled={addDisabled}
+                          onClick={() => confirmAddToCart(p, currentQty)}
+                          className="aca-addBtn"
+                          block
+                        >
+                          {locationUnavailable
+                            ? "Unavailable"
+                            : addDisabled
+                              ? "Sold out"
+                              : "Add to cart"}
+                        </Button>
+                      </div>
+                    </Card>
+                  </Col>
+                );
               })}
             </Row>
           )}
@@ -1655,19 +1662,17 @@ export default function ShopPage() {
               <div style={{ display: "grid", gap: 10 }}>
                 {summaryItems.map((row) => {
                   const prod = products.find(
-                    (product) =>
-                      String(product.id) === String(row.product.id),
+                    (product) => String(product.id) === String(row.product.id),
                   );
                   const summaryProduct = prod ?? row.product;
                   const img = resolveImageUrl(summaryProduct.imageUrl);
                   const unitLabel = summaryUnitLabel(summaryProduct);
                   const unitPrice = summaryUnitPrice(summaryProduct);
-                  const estimatedPackPrice = summaryEstimatedPackPrice(
-                    summaryProduct,
-                  );
+                  const estimatedPackPrice =
+                    summaryEstimatedPackPrice(summaryProduct);
                   const isEstimated =
-                    String(summaryProduct.unit || "").toLowerCase() ===
-                      "kg" && summaryAvgWeightG(summaryProduct) !== null;
+                    String(summaryProduct.unit || "").toLowerCase() === "kg" &&
+                    summaryAvgWeightG(summaryProduct) !== null;
                   const qty = Number(row.qty || 1);
 
                   return (

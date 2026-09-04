@@ -238,7 +238,7 @@ export default function ProductsTab({
       stockQty: p.stockQty,
       processingStockWeightKg: Number(p.processingStockWeightKg || 0),
       isActive: p.isActive,
-      isHiddenFromShop: Boolean(p.isHiddenFromShop),
+      isHiddenFromShop: Boolean(p.isForProcessing || p.isHiddenFromShop),
       isFifthQuarter: Boolean((p as any).isFifthQuarter),
       isForProcessing: Boolean(p.isForProcessing),
       categoryId: p.categoryId ?? null,
@@ -336,7 +336,9 @@ export default function ProductsTab({
         cutType: (p as any).cutType ?? "",
         avgWeightG: (p as any).avgWeightG ?? null,
       });
-      message.success("Product restored to shop");
+      message.success(
+        p.isForProcessing ? "Processing product restored" : "Product restored",
+      );
       onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Failed to unarchive");
@@ -439,7 +441,9 @@ export default function ProductsTab({
         ? Number(values.processingStockWeightKg || 0)
         : 0,
       isActive: values.isActive ?? true,
-      isHiddenFromShop: values.isHiddenFromShop ?? false,
+      isHiddenFromShop: values.isForProcessing
+        ? true
+        : values.isHiddenFromShop ?? false,
       isFifthQuarter: values.isFifthQuarter ?? false,
       isForProcessing: values.isForProcessing ?? false,
       categoryId: values.categoryId ?? null,
@@ -819,16 +823,19 @@ export default function ProductsTab({
       title: "Hide from shop",
       key: "isHiddenFromShop",
       width: 140,
-      render: (_: any, p: AdminProduct) => (
-        <Switch
-          checked={Boolean(p.isHiddenFromShop)}
-          checkedChildren="Hidden"
-          unCheckedChildren="Shown"
-          loading={visibilityUpdatingIds.includes(p.id)}
-          disabled={!p.isActive || Boolean(p.isForProcessing)}
-          onChange={(checked) => setProductShopVisibility(p, checked)}
-        />
-      ),
+      render: (_: any, p: AdminProduct) =>
+        p.isForProcessing ? (
+          <Tag color="orange">Always hidden</Tag>
+        ) : (
+          <Switch
+            checked={Boolean(p.isHiddenFromShop)}
+            checkedChildren="Hidden"
+            unCheckedChildren="Shown"
+            loading={visibilityUpdatingIds.includes(p.id)}
+            disabled={!p.isActive}
+            onChange={(checked) => setProductShopVisibility(p, checked)}
+          />
+        ),
     },
     {
       title: "",
@@ -1046,9 +1053,15 @@ export default function ProductsTab({
             name="isForProcessing"
             label="For processing only"
             valuePropName="checked"
-            extra="Included in carcass yield and hidden from the shop. Its item count is tracked separately from the weight available to process."
+            extra="Included in carcass yield and always hidden from the shop. Its item count is tracked separately from the weight available to process."
           >
-            <Switch />
+            <Switch
+              onChange={(checked) => {
+                if (checked) {
+                  productForm.setFieldValue("isHiddenFromShop", true);
+                }
+              }}
+            />
           </Form.Item>
 
           <Form.Item name="cutType" label="Cut type (optional)">
@@ -1190,9 +1203,13 @@ export default function ProductsTab({
             name="isHiddenFromShop"
             label="Hide from shop"
             valuePropName="checked"
-            extra="Keeps this product active everywhere else, but removes it from the public shop page."
+            extra={
+              isForProcessing
+                ? "Processing-only products are always hidden from the public shop."
+                : "Keeps this product active everywhere else, but removes it from the public shop page."
+            }
           >
-            <Switch />
+            <Switch disabled={Boolean(isForProcessing)} />
           </Form.Item>
         </Form>
       </Modal>
