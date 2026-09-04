@@ -1112,7 +1112,6 @@ export default function ShopPage() {
                                   danger
                                   onClick={() => remove(row.product.id)}
                                   icon={<DeleteOutlined />}
-                                  disabled={locationUnavailable}
                                 />
 
                                 <div
@@ -1798,7 +1797,6 @@ export default function ShopPage() {
                             danger
                             onClick={() => remove(row.product.id)}
                             icon={<DeleteOutlined />}
-                            disabled={locationUnavailable}
                           />
                         </div>
 
