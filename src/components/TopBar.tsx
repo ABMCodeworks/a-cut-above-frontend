@@ -17,6 +17,7 @@ import {
   ShoppingCartOutlined,
   UserOutlined,
   ShopOutlined,
+  TeamOutlined,
   InfoCircleOutlined,
   MailOutlined,
   MenuOutlined,
@@ -75,6 +76,11 @@ export default function TopBar() {
         key: "/products",
         label: <Link to="/products">Shop</Link>,
         icon: <ShopOutlined />,
+      },
+      {
+        key: "/wholesale",
+        label: <Link to="/wholesale">Wholesale</Link>,
+        icon: <TeamOutlined />,
       },
       {
         key: "/checkout",
