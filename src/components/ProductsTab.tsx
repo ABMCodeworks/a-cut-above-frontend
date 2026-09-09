@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import {
   Button,
   Card,
+  Divider,
   Dropdown,
   Form,
   Input,
@@ -58,6 +59,16 @@ type ProcessingStockAdjustmentForm = {
   action: "ADD" | "REMOVE";
   packetCount: number;
   totalWeightKg: number;
+};
+
+type ManufactureProductForm = {
+  outputProductId: string;
+  outputPacketCount: number;
+  notes?: string;
+  ingredients: Array<{
+    productId: string;
+    quantity: number;
+  }>;
 };
 
 function resolveImageUrl(url?: string | null): string | null {
@@ -143,6 +154,19 @@ export default function ProductsTab({
   const processingStockAction = Form.useWatch("action", processingStockForm) || "ADD";
   const processingStockPackets = Number(Form.useWatch("packetCount", processingStockForm) || 0);
   const processingStockWeightKg = Number(Form.useWatch("totalWeightKg", processingStockForm) || 0);
+
+  const [manufactureModalOpen, setManufactureModalOpen] = useState(false);
+  const [manufacturing, setManufacturing] = useState(false);
+  const [manufactureForm] = Form.useForm<ManufactureProductForm>();
+  const manufactureOutputProductId = Form.useWatch(
+    "outputProductId",
+    manufactureForm,
+  );
+  const manufactureOutputPacketCount = Number(
+    Form.useWatch("outputPacketCount", manufactureForm) || 0,
+  );
+  const manufactureIngredients =
+    Form.useWatch("ingredients", manufactureForm) || [];
 
   const [groupByCategory, setGroupByCategory] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
@@ -273,6 +297,38 @@ export default function ProductsTab({
     setProcessingStockModalOpen(true);
   }
 
+  function openManufactureModal() {
+    manufactureForm.resetFields();
+    manufactureForm.setFieldsValue({
+      outputProductId: "",
+      outputPacketCount: 1,
+      notes: "",
+      ingredients: [{ productId: "", quantity: 1 }],
+    });
+    setManufactureModalOpen(true);
+  }
+
+  async function saveManufacturedProduct() {
+    try {
+      const values = await manufactureForm.validateFields();
+      setManufacturing(true);
+      const response = await api.post("/api/admin/products/manufacture", values);
+      const productName =
+        response.data?.manufacturingBatch?.outputProduct?.name || "Product";
+      message.success(
+        `${values.outputPacketCount} packet(s) of ${productName} added to stock`,
+      );
+      setManufactureModalOpen(false);
+      manufactureForm.resetFields();
+      onReload();
+    } catch (e: any) {
+      if (e?.errorFields) return;
+      message.error(e?.response?.data?.error || "Could not make product");
+    } finally {
+      setManufacturing(false);
+    }
+  }
+
   async function saveProcessingStockAdjustment() {
     if (!processingStockProduct) return;
     const values = await processingStockForm.validateFields();
@@ -302,7 +358,7 @@ export default function ProductsTab({
       if (action === "archived") {
         message.warning({
           content:
-            "This product is linked to previous orders and cannot be deleted. It has been archived instead.",
+            "This product has order or production history and cannot be deleted. It has been archived instead.",
           duration: 5,
         });
       } else {
@@ -635,8 +691,11 @@ export default function ProductsTab({
       onClick: () => moveProduct(p.id, "down", p.categoryId ?? null),
     });
 
-    const hasOrders = Number((p as any)._count?.orderItems ?? 0) > 0;
-    const label = hasOrders ? "Archive" : "Delete";
+    const hasHistory =
+      Number((p as any)._count?.orderItems ?? 0) > 0 ||
+      Number((p as any)._count?.manufacturedBatches ?? 0) > 0 ||
+      Number((p as any)._count?.manufacturingInputs ?? 0) > 0;
+    const label = hasHistory ? "Archive" : "Delete";
 
     items.push({
       type: "divider",
@@ -648,8 +707,8 @@ export default function ProductsTab({
       label,
       onClick: () => {
         Modal.confirm({
-          title: hasOrders
-            ? "This product has previous orders. It will be archived (hidden from shop)."
+          title: hasHistory
+            ? "This product has order or production history. It will be archived (hidden from shop)."
             : "Permanently delete this product? This cannot be undone.",
           okText: label,
           okButtonProps: { danger: true },
@@ -907,9 +966,12 @@ export default function ProductsTab({
               : `Show Archived${archivedCount > 0 ? ` (${archivedCount})` : ""}`}
           </Button>
           {!showArchived && (
-            <Button type="primary" onClick={openCreateProduct}>
-              New Product
-            </Button>
+            <>
+              <Button onClick={openManufactureModal}>Make Product</Button>
+              <Button type="primary" onClick={openCreateProduct}>
+                New Product
+              </Button>
+            </>
           )}
         </Space>
       }
@@ -1211,6 +1273,171 @@ export default function ProductsTab({
           >
             <Switch disabled={Boolean(isForProcessing)} />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Make Product"
+        open={manufactureModalOpen}
+        onCancel={() => {
+          setManufactureModalOpen(false);
+          manufactureForm.resetFields();
+        }}
+        onOk={saveManufacturedProduct}
+        okText="Make and Add Stock"
+        confirmLoading={manufacturing}
+        width={760}
+      >
+        <Form form={manufactureForm} layout="vertical">
+          <Form.Item
+            name="outputProductId"
+            label="Product to make"
+            rules={[{ required: true, message: "Select the product to make" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Select finished product"
+              options={products
+                .filter((product) => product.isActive && !product.isForProcessing)
+                .map((product) => ({
+                  value: product.id,
+                  label: `${product.name} (${product.unit}) — ${product.stockQty} currently in stock`,
+                }))}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="outputPacketCount"
+            label="Number of packets made"
+            rules={[{ required: true, message: "Enter the number of packets made" }]}
+          >
+            <InputNumber min={1} step={1} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Divider>Products used</Divider>
+          <Text type="secondary">
+            Only products whose unit is not “pack” can be used. The quantities
+            below are removed from their stock when the finished packets are added.
+          </Text>
+
+          <Form.List name="ingredients">
+            {(fields, { add, remove }) => (
+              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                {fields.map((field) => {
+                  const currentProductId = manufactureForm.getFieldValue([
+                    "ingredients",
+                    field.name,
+                    "productId",
+                  ]);
+                  const selectedProduct = products.find(
+                    (product) => product.id === currentProductId,
+                  );
+                  const selectedElsewhere = new Set(
+                    manufactureIngredients
+                      .map((ingredient: any, index: number) =>
+                        index === field.name ? "" : ingredient?.productId,
+                      )
+                      .filter(Boolean),
+                  );
+
+                  return (
+                    <Card key={field.key} size="small">
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 2fr) minmax(130px, 1fr) auto",
+                          gap: 10,
+                          alignItems: "start",
+                        }}
+                      >
+                        <Form.Item
+                          {...field}
+                          name={[field.name, "productId"]}
+                          label="Ingredient product"
+                          rules={[{ required: true, message: "Select an ingredient" }]}
+                          style={{ marginBottom: 0 }}
+                        >
+                          <Select
+                            showSearch
+                            optionFilterProp="label"
+                            placeholder="Select stock to use"
+                            options={products
+                              .filter(
+                                (product) =>
+                                  product.isActive &&
+                                  product.id !== manufactureOutputProductId &&
+                                  String(product.unit || "").toLowerCase() !== "pack",
+                              )
+                              .map((product) => ({
+                                value: product.id,
+                                label: `${product.name} (${product.unit}) — ${product.stockQty} available${product.avgWeightG ? ` — avg ${fmtGrams(Number(product.avgWeightG), product.unit)}` : ""}`,
+                                disabled: selectedElsewhere.has(product.id),
+                              }))}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          {...field}
+                          name={[field.name, "quantity"]}
+                          label={`Units used${selectedProduct ? ` (${selectedProduct.unit})` : ""}`}
+                          rules={[{ required: true, message: "Enter units used" }]}
+                          style={{ marginBottom: 0 }}
+                        >
+                          <InputNumber
+                            min={1}
+                            max={selectedProduct?.stockQty}
+                            step={1}
+                            precision={0}
+                            style={{ width: "100%" }}
+                          />
+                        </Form.Item>
+                        <Button
+                          danger
+                          disabled={fields.length === 1}
+                          style={{ marginTop: 30 }}
+                          onClick={() => remove(field.name)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+                <Button
+                  onClick={() => add({ productId: "", quantity: 1 })}
+                  disabled={
+                    fields.length >=
+                    products.filter(
+                      (product) =>
+                        product.isActive &&
+                        product.id !== manufactureOutputProductId &&
+                        String(product.unit || "").toLowerCase() !== "pack",
+                    ).length
+                  }
+                >
+                  Add Another Ingredient
+                </Button>
+              </div>
+            )}
+          </Form.List>
+
+          <Form.Item name="notes" label="Production notes (optional)" style={{ marginTop: 16 }}>
+            <Input.TextArea rows={2} />
+          </Form.Item>
+
+          {manufactureOutputProductId ? (
+            <Card size="small">
+              <Text>
+                <b>Finished stock after production:</b>{" "}
+                {Number(
+                  products.find(
+                    (product) => product.id === manufactureOutputProductId,
+                  )?.stockQty || 0,
+                ) + manufactureOutputPacketCount}{" "}
+                packets
+              </Text>
+            </Card>
+          ) : null}
         </Form>
       </Modal>
 

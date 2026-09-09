@@ -12,7 +12,9 @@ import WindowsTab from "../../components/WindowsTab";
 import DropoffLocationsTab from "../../components/DropoffLocationsTab";
 import DashboardTab from "../../components/DashboardTab";
 import UsersTab from "../../components/UsersTab";
-import CarcassWeightsTab from "../../components/CarcassWeightsTab";
+import CarcassWeightsTab, {
+  type CarcassBatchRecord,
+} from "../../components/CarcassWeightsTab";
 import WasteManagementTab from "../../components/WasteManagementTab";
 import ContentTab from "../../components/ContentTab";
 import DiscountCodesTab from "../../components/DiscountCodesTab";
@@ -64,6 +66,8 @@ export type AdminProduct = {
   _count?: {
     orderItems: number;
     wastes?: number;
+    manufacturedBatches?: number;
+    manufacturingInputs?: number;
   };
   wastes?: AdminProductWaste[];
   totalPacksWasted?: number;
@@ -181,17 +185,7 @@ export type AdminPermission =
   | "privacy.view"
   | "privacy.manage";
 
-export type CarcassWeightRecord = {
-  id: string;
-  animalId: string;
-  weighedAt: string;
-  wetWeightKg: string | number;
-  dryWeightKg?: string | number | null;
-  dryWeighedAt?: string | null;
-  notes?: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+export type CarcassWeightRecord = CarcassBatchRecord;
 
 export type AdminUserRecord = {
   id: string;

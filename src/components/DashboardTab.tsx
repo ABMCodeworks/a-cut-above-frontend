@@ -208,16 +208,17 @@ export default function DashboardTab({
 
   const carcassStats = useMemo(() => {
     const complete = (carcassWeights || []).filter(
-      (r) =>
-        r.dryWeightKg !== null &&
-        r.dryWeightKg !== undefined &&
-        n(r.wetWeightKg) > 0,
+      (r) => {
+        const dry = (r as any).totalDryWeightKg ?? (r as any).dryWeightKg;
+        const wet = (r as any).totalWetWeightKg ?? (r as any).wetWeightKg;
+        return dry !== null && dry !== undefined && n(wet) > 0;
+      },
     );
 
     const avgLossPct = complete.length
       ? complete.reduce((sum, r) => {
-        const wet = n(r.wetWeightKg);
-        const dry = n(r.dryWeightKg);
+        const wet = n((r as any).totalWetWeightKg ?? (r as any).wetWeightKg);
+        const dry = n((r as any).totalDryWeightKg ?? (r as any).dryWeightKg);
         return sum + ((wet - dry) / wet) * 100;
       }, 0) / complete.length
       : 0;
@@ -278,6 +279,20 @@ export default function DashboardTab({
     const moneyOrders = moneyReadyOrders.length;
 
     const revenue = moneyReadyOrders.reduce((acc, o) => acc + n(o.total), 0);
+    const retailMoneyOrders = moneyReadyOrders.filter(
+      (order) => String(order.pricingTier || "RETAIL").toUpperCase() !== "WHOLESALE",
+    );
+    const wholesaleMoneyOrders = moneyReadyOrders.filter(
+      (order) => String(order.pricingTier || "").toUpperCase() === "WHOLESALE",
+    );
+    const retailRevenue = retailMoneyOrders.reduce(
+      (total, order) => total + n(order.total),
+      0,
+    );
+    const wholesaleRevenue = wholesaleMoneyOrders.reduce(
+      (total, order) => total + n(order.total),
+      0,
+    );
     const discounts = moneyReadyOrders.reduce(
       (acc, o) => acc + n(o.discountTotal),
       0,
@@ -318,6 +333,10 @@ export default function DashboardTab({
     return {
       totalOrders,
       revenue,
+      retailRevenue,
+      wholesaleRevenue,
+      retailOrderCount: retailMoneyOrders.length,
+      wholesaleOrderCount: wholesaleMoneyOrders.length,
       discounts,
       grossRevenue,
       avgOrder,
@@ -617,11 +636,35 @@ export default function DashboardTab({
         <Col xs={24} sm={12} lg={6}>
           <Card className="aca-card" loading={loading}>
             <Statistic
-              title="Revenue after discounts"
+              title="Total sales after discounts"
               value={money(kpis.revenue)}
             />
             <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
-              Uses backend totals only after kg weights are complete
+              Retail and wholesale combined; finalized weights only
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} lg={6}>
+          <Card className="aca-card" loading={loading}>
+            <Statistic
+              title="Individual / retail sales"
+              value={money(kpis.retailRevenue)}
+            />
+            <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
+              {kpis.retailOrderCount} finalized retail order(s)
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} lg={6}>
+          <Card className="aca-card" loading={loading}>
+            <Statistic
+              title="Wholesale sales"
+              value={money(kpis.wholesaleRevenue)}
+            />
+            <div style={{ marginTop: 6, opacity: 0.75, fontSize: 12 }}>
+              {kpis.wholesaleOrderCount} finalized wholesale order(s)
             </div>
           </Card>
         </Col>

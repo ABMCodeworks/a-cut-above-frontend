@@ -77,6 +77,7 @@ type ProductOption = {
   id: string;
   name: string;
   unit: string;
+  avgWeightG?: number | null;
   stockQty?: number;
   categoryId?: string | null;
   isFifthQuarter?: boolean;
@@ -138,7 +139,7 @@ type QuarterSale = {
   notes?: string | null;
 };
 
-type CarcassBatchRecord = {
+export type CarcassBatchRecord = {
   id: string;
   animalId: string;
   meatCategoryId?: string | null;
@@ -230,6 +231,17 @@ function n(value: unknown) {
 
 function kg(value: unknown) {
   return `${n(value).toFixed(2)} kg`;
+}
+
+function productOptionLabel(product: ProductOption) {
+  const averageGrams = n(product.avgWeightG);
+  const average =
+    averageGrams <= 0
+      ? ""
+      : averageGrams >= 1000
+        ? ` — avg ${Number((averageGrams / 1000).toFixed(3))} kg`
+        : ` — avg ${Math.round(averageGrams)} g`;
+  return `${product.name} (${product.unit})${average}`;
 }
 
 function pct(source: unknown, result: unknown): number | null {
@@ -982,7 +994,7 @@ export default function CarcassWeightsTab({
           </div>
 
           {selectedKind === "beef" ? <>
-            <Divider orientation="left">Wet Quarter Weights</Divider>
+            <Divider titlePlacement="start">Wet Quarter Weights</Divider>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
               {beefQuarterFields.filter(([, , part]) => beefConfigurationParts[beefConfiguration].includes(part)).map(([name, label]) => <Form.Item key={name} name={name} label={`${label} Wet Weight (kg)`} rules={[{ required: true, message: `Enter the ${label.toLowerCase()} weight` }]}><InputNumber min={0.01} step={0.1} style={{ width: "100%" }} /></Form.Item>)}
             </div>
@@ -991,13 +1003,13 @@ export default function CarcassWeightsTab({
           <Card size="small"><Space size="large" wrap><Text><b>Carcass / batch:</b> {kg(wetCarcassPreview)}</Text>{selectedKind === "beef" ? <Text><b>5th quarter:</b> {kg(fifthPreview)}</Text> : null}</Space></Card>
 
           {selectedKind === "beef" ? <>
-            <Divider orientation="left">5th Quarter Products</Divider>
+            <Divider titlePlacement="start">5th Quarter Products</Divider>
             <Form.List name="fifthQuarterItems">
               {(fields, { add, remove }) => <div style={{ display: "grid", gap: 10 }}>
                 {fields.map((field) => {
                   const selectedIds = (wetForm.getFieldValue("fifthQuarterItems") || []).map((item: FifthQuarterItem) => item?.productId);
                   return <Card key={field.key} size="small"><div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10 }}>
-                    <Form.Item {...field} name={[field.name, "productId"]} label="Product" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={fifthProducts.filter((product) => !selectedIds.includes(product.id) || wetForm.getFieldValue(["fifthQuarterItems", field.name, "productId"]) === product.id).map((product) => ({ value: product.id, label: product.name }))} /></Form.Item>
+                    <Form.Item {...field} name={[field.name, "productId"]} label="Product" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={fifthProducts.filter((product) => !selectedIds.includes(product.id) || wetForm.getFieldValue(["fifthQuarterItems", field.name, "productId"]) === product.id).map((product) => ({ value: product.id, label: productOptionLabel(product) }))} /></Form.Item>
                     <Form.Item {...field} name={[field.name, "totalWeightKg"]} label="Weight (kg)" rules={[{ required: true }]}><InputNumber min={0} step={0.1} style={{ width: "100%" }} /></Form.Item>
                     <Form.Item {...field} name={[field.name, "packetCount"]} label="Packets" rules={[{ required: true }]}><InputNumber min={0} step={1} style={{ width: "100%" }} /></Form.Item>
                     <Button danger style={{ marginTop: 30 }} onClick={() => remove(field.name)}>Remove</Button>
@@ -1033,13 +1045,13 @@ export default function CarcassWeightsTab({
             <Form.Item name="processedAt" label="Processing Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
             <Form.Item name="inputWeightKg" label={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Remaining Quarter Dry Weight (kg)" : "Source Weight Used (kg)"} rules={[{ required: true }]} extra={editingProcessingBatch ? "The original processing source and input weight stay locked; edit the resulting products below." : target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Locked to the selected quarter dry weight minus products already processed from it." : undefined}><InputNumber min={0.01} max={processingSourceOutput ? availableOutputWeight(processingSourceOutput) : target && selectedSource ? availableFor(target, selectedSource) : undefined} step={0.1} disabled={Boolean(editingProcessingBatch) || !processingSourceOutput} style={{ width: "100%" }} /></Form.Item>
           </div>
-          <Divider orientation="left">Products Cut From This Source</Divider>
+          <Divider titlePlacement="start">Products Cut From This Source</Divider>
           <Form.List name="outputs">{(fields, { add, remove }) => <div style={{ display: "grid", gap: 10 }}>
             {fields.map((field) => {
               const chosenProductId = processingForm.getFieldValue(["outputs", field.name, "productId"]);
               const chosenProduct = outputProducts.find((product) => product.id === chosenProductId);
               return <Card key={field.key} size="small"><div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10 }}>
-              <Form.Item {...field} name={[field.name, "productId"]} label="Product" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={outputProducts.filter((product) => product.id !== processingSourceOutput?.productId).map((product) => ({ value: product.id, label: `${product.name} (${product.unit})${product.isForProcessing ? " — process further later" : ""}` }))} onChange={(productId) => { const product = outputProducts.find((candidate) => candidate.id === productId); processingForm.setFieldValue(["outputs", field.name, "packetCount"], product?.isForProcessing ? 0 : Math.max(1, n(processingForm.getFieldValue(["outputs", field.name, "packetCount"])))); }} /></Form.Item>
+              <Form.Item {...field} name={[field.name, "productId"]} label="Product" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={outputProducts.filter((product) => product.id !== processingSourceOutput?.productId).map((product) => ({ value: product.id, label: `${productOptionLabel(product)}${product.isForProcessing ? " — process further later" : ""}` }))} onChange={(productId) => { const product = outputProducts.find((candidate) => candidate.id === productId); processingForm.setFieldValue(["outputs", field.name, "packetCount"], product?.isForProcessing ? 0 : Math.max(1, n(processingForm.getFieldValue(["outputs", field.name, "packetCount"])))); }} /></Form.Item>
               <Form.Item {...field} name={[field.name, "totalWeightKg"]} label="Processed Weight (kg)" rules={[{ required: true }]}><InputNumber min={0.01} step={0.1} style={{ width: "100%" }} /></Form.Item>
               <Form.Item {...field} name={[field.name, "packetCount"]} label={chosenProduct?.isForProcessing ? "Packets (not shop stock)" : "Sellable Packets"} rules={[{ required: true }]}><InputNumber min={chosenProduct?.isForProcessing ? 0 : 1} step={1} disabled={chosenProduct?.isForProcessing} style={{ width: "100%" }} /></Form.Item>
               <Button danger disabled={fields.length === 1} style={{ marginTop: 30 }} onClick={() => remove(field.name)}>Remove</Button>

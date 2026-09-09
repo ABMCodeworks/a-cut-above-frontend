@@ -93,6 +93,7 @@ type AdminCreateProduct = {
   name: string;
   unit: string;
   stockQty?: number | null;
+  isForProcessing?: boolean;
   retailPrice?: string | number | null;
   wholesalePrice?: string | number | null;
   price?: string | number | null;
@@ -725,7 +726,7 @@ function OrderTable({
       pagination={{ pageSize: 20, showSizeChanger: false }}
       expandable={{
         expandedRowKeys,
-        onExpandedRowsChange: (keys) => onExpandedRowKeysChange(keys),
+        onExpandedRowsChange: (keys) => onExpandedRowKeysChange([...keys]),
         expandedRowRender: (order) => {
           const stableItems = [...(order.items || [])]
             .map((item: any) => ({
@@ -1346,7 +1347,21 @@ export default function OrdersTab({
         ),
       );
 
-      message.success("Status updated");
+      if (status === "DELIVERED") {
+        setSelectedRowKeys((current) =>
+          current.filter((key) => String(key) !== String(orderId)),
+        );
+        setExpandedRowKeys((current) =>
+          current.filter((key) => String(key) !== String(orderId)),
+        );
+      }
+
+      message.success(
+        status === "DELIVERED"
+          ? "Order marked delivered and moved to Archive"
+          : "Status updated",
+      );
+      onReload();
       if (sendWhatsApp && status === "DELIVERED" && res.data?.whatsapp?.sent === false) {
         message.warning(
           res.data.whatsapp.reason === "consent_not_granted"
@@ -1647,7 +1662,17 @@ export default function OrdersTab({
         ),
       );
 
-      message.success(`Updated ${selectedRowKeys.length} order(s)`);
+      if (bulkStatus === "DELIVERED") {
+        setExpandedRowKeys((current) =>
+          current.filter((key) => !selectedRowKeys.includes(key)),
+        );
+      }
+
+      message.success(
+        bulkStatus === "DELIVERED"
+          ? `Marked ${selectedRowKeys.length} order(s) delivered and moved to Archive`
+          : `Updated ${selectedRowKeys.length} order(s)`,
+      );
       const failedMessages = (res.data?.whatsappResults || []).filter(
         (result: any) => result?.whatsapp?.sent === false,
       );
@@ -1658,6 +1683,7 @@ export default function OrdersTab({
       }
       setSelectedRowKeys([]);
       setBulkOpen(false);
+      onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Order status update failed");
     } finally {
@@ -1701,6 +1727,10 @@ export default function OrdersTab({
         );
       }
       setSelectedRowKeys([]);
+      setExpandedRowKeys((current) =>
+        current.filter((key) => !selectedRowKeys.includes(key)),
+      );
+      onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Status update failed");
     } finally {
