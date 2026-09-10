@@ -1102,3 +1102,37 @@ body {
     &__navigation { font-size: 12px; }
   }
 }
+
+
+.aca-settings {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.aca-settings__sidebar {
+  position: sticky;
+  top: 96px;
+}
+
+.aca-settings__sections {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+
+  > section {
+    min-width: 0;
+    scroll-margin-top: 96px;
+  }
+}
+
+@media (max-width: 991px) {
+  .aca-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aca-settings__sidebar {
+    position: static;
+  }
+}

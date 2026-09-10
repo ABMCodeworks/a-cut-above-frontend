@@ -11,14 +11,12 @@ import CategoriesTab from "../../components/CategoriesTab";
 import SettingsTab from "../../components/SettingsTab";
 import DropoffLocationsTab from "../../components/DropoffLocationsTab";
 import DashboardTab from "../../components/DashboardTab";
-import UsersTab from "../../components/UsersTab";
 import CarcassWeightsTab, {
   type CarcassBatchRecord,
 } from "../../components/CarcassWeightsTab";
 import WasteManagementTab from "../../components/WasteManagementTab";
 import ContentTab from "../../components/ContentTab";
 import DiscountCodesTab from "../../components/DiscountCodesTab";
-import PrivacyRequestsTab from "../../components/PrivacyRequestsTab";
 
 export type AdminCategory = {
   id: string;
@@ -364,7 +362,10 @@ export default function AdminDashboardPage() {
 
   // Persist the selected tab in the URL so a refresh keeps the user on the
   // same tab instead of resetting to the dashboard.
-  const activeTabKey = searchParams.get("tab") || defaultTabKey;
+  const requestedTabKey = searchParams.get("tab") || defaultTabKey;
+  const activeTabKey = ["users", "privacy", "settings"].includes(requestedTabKey)
+    ? "windows"
+    : requestedTabKey;
 
   const handleTabChange = useCallback(
     (key: string) => {
@@ -492,23 +493,6 @@ export default function AdminDashboardPage() {
             ]
             : []),
 
-          ...(canViewUsers
-            ? [
-              {
-                key: "users",
-                label: "Users",
-                children: (
-                  <UsersTab
-                    loading={loading}
-                    users={users}
-                    currentPermissions={myPermissions}
-                    onReload={loadAll}
-                  />
-                ),
-              },
-            ]
-            : []),
-
           ...(canViewContent
             ? [
               {
@@ -519,16 +503,6 @@ export default function AdminDashboardPage() {
                     permissions={myPermissions}
                   />
                 ),
-              },
-            ]
-            : []),
-
-          ...(canViewPrivacy
-            ? [
-              {
-                key: "privacy",
-                label: "Privacy Requests",
-                children: <PrivacyRequestsTab permissions={myPermissions} />,
               },
             ]
             : []),
@@ -549,7 +523,7 @@ export default function AdminDashboardPage() {
             ]
             : []),
 
-          ...(canViewWindows
+          ...(canViewWindows || canViewUsers || canViewPrivacy
             ? [
               {
                 key: "windows",
@@ -558,7 +532,10 @@ export default function AdminDashboardPage() {
                   <SettingsTab
                     loading={loading}
                     windows={windows}
-                    canManage={hasPermission(myPermissions, "windows.manage")}
+                    permissions={myPermissions}
+                    users={users}
+                    active={activeTabKey === "windows"}
+                    initialSection={requestedTabKey === "users" || requestedTabKey === "privacy" ? requestedTabKey : undefined}
                     onReload={loadAll}
                   />
                 ),

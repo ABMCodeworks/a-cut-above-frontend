@@ -1,14 +1,27 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Button, Card, Col, Form, Input, Row, Skeleton, Space, Typography, message } from "antd";
+import { Alert, Anchor, Button, Card, Col, Form, Input, Row, Skeleton, Typography, message } from "antd";
 import { api } from "../api/client";
 import WindowsTab from "./WindowsTab";
-import type { AdminWindow } from "../pages/admin/AdminDashboardPage";
+import UsersTab from "./UsersTab";
+import PrivacyRequestsTab from "./PrivacyRequestsTab";
+import type { AdminPermission, AdminUserRecord, AdminWindow } from "../pages/admin/AdminDashboardPage";
 
 type CompanyDetails = { name: string; address: string; phone: string; email: string; tin: string; vatNumber: string; registrationNumber: string };
 
-export default function SettingsTab({ loading, windows, onReload, canManage }: {
-  loading: boolean; windows: AdminWindow[]; onReload: () => void; canManage: boolean;
+export default function SettingsTab({ loading, windows, onReload, permissions, users, active, initialSection }: {
+  loading: boolean; windows: AdminWindow[]; onReload: () => void; permissions: AdminPermission[];
+  users: AdminUserRecord[]; active: boolean; initialSection?: "users" | "privacy";
 }) {
+  const can = (permission: AdminPermission) => permissions.includes("admin.full") || permissions.includes(permission);
+  const canViewWindows = can("windows.view");
+  const canViewUsers = can("users.view");
+  const canViewPrivacy = can("privacy.view");
+  const canManage = can("windows.manage");
+  const sections = [
+    ...(canViewWindows ? [{ key: "delivery-note", href: "#settings-delivery-note", title: "Delivery-note details" }, { key: "windows", href: "#settings-windows", title: "Ordering windows" }] : []),
+    ...(canViewUsers ? [{ key: "users", href: "#settings-users", title: "Users" }] : []),
+    ...(canViewPrivacy ? [{ key: "privacy", href: "#settings-privacy", title: "Privacy requests" }] : []),
+  ];
   const [form] = Form.useForm<CompanyDetails>();
   const [fetching, setFetching] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,7 +39,15 @@ export default function SettingsTab({ loading, windows, onReload, canManage }: {
     } catch { setError("Could not load delivery-note details. Please retry."); }
     finally { setFetching(false); }
   }
-  useEffect(() => { void loadDetails(); }, []);
+  useEffect(() => { if (canViewWindows) void loadDetails(); }, [canViewWindows]);
+
+  useEffect(() => {
+    if (!active) return;
+    const id = initialSection ? `settings-${initialSection}` : window.location.hash.slice(1);
+    if (!id.startsWith("settings-")) return;
+    const frame = requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, [active, initialSection, fetching]);
 
   async function save(details: CompanyDetails) {
     setSaving(true);
@@ -45,7 +66,14 @@ export default function SettingsTab({ loading, windows, onReload, canManage }: {
   ].filter(Boolean) : [];
   const singleLine = { pattern: /^[^\r\n]*$/, message: "Use a single line" };
 
-  return <Space direction="vertical" size="large" style={{ width: "100%" }}>
+  return <div className="aca-settings">
+    <nav className="aca-settings__sidebar" aria-label="Settings sections">
+      <Card size="small" title="Settings">
+        <Anchor affix={false} offsetTop={96} targetOffset={96} items={sections} />
+      </Card>
+    </nav>
+    <div className="aca-settings__sections">
+    {canViewWindows && <section id="settings-delivery-note" aria-label="Delivery-note details">
     <Card title="Delivery-note details">
       <Typography.Paragraph type="secondary">Set the business details printed on individual and bulk delivery notes. Saved changes apply whenever a delivery note is downloaded, including existing orders.</Typography.Paragraph>
       {error && <Alert type="error" showIcon title={error} action={<Button onClick={loadDetails}>Retry</Button>} style={{ marginBottom: 16 }} />}
@@ -75,6 +103,16 @@ export default function SettingsTab({ loading, windows, onReload, canManage }: {
         </Col>
       </Row>}
     </Card>
-    <WindowsTab loading={loading} windows={windows} onReload={onReload} canManage={canManage} />
-  </Space>;
+    </section>}
+    {canViewWindows && <section id="settings-windows" aria-label="Ordering windows">
+      <WindowsTab loading={loading} windows={windows} onReload={onReload} canManage={canManage} />
+    </section>}
+    {canViewUsers && <section id="settings-users" aria-label="Users">
+      <UsersTab loading={loading} users={users} currentPermissions={permissions} onReload={onReload} />
+    </section>}
+    {canViewPrivacy && <section id="settings-privacy" aria-label="Privacy requests">
+      <PrivacyRequestsTab permissions={permissions} />
+    </section>}
+    </div>
+  </div>;
 }

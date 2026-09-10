@@ -312,11 +312,12 @@ export default function UsersTab({
         rowKey={(r) => r.id}
         dataSource={users}
         columns={columns as any}
+        scroll={{ x: 850 }}
       />
 
       {canManageUsers && <Card size="small" title="Invitations" extra={<Button onClick={loadInvitations}>Refresh</Button>} style={{ marginTop: 24 }}>
         {inviteError && <Alert type="error" title={inviteError} />}
-        <Table rowKey="id" dataSource={invitations} pagination={{ pageSize: 5 }} columns={[
+        <Table scroll={{ x: 600 }} rowKey="id" dataSource={invitations} pagination={{ pageSize: 5 }} columns={[
           { title: "Email", dataIndex: "email" },
           { title: "Expires", render: (_, row) => new Date(row.expiresAt).toLocaleString() },
           { title: "Status", render: (_, row) => row.usedAt ? "Accepted" : row.revokedAt ? "Revoked" : row.attempts >= 5 ? "Locked" : new Date(row.expiresAt) <= new Date() ? "Expired" : "Pending" },
