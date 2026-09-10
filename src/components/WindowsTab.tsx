@@ -32,10 +32,12 @@ export default function WindowsTab({
   loading,
   windows,
   onReload,
+  canManage = true,
 }: {
   loading: boolean;
   windows: AdminWindow[];
   onReload: () => void;
+  canManage?: boolean;
 }) {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
@@ -159,6 +161,7 @@ export default function WindowsTab({
                 </div>
 
                 <Button
+                  disabled={!canManage}
                   size="small"
                   type="primary"
                   onClick={() => openEditWindow(w)}
@@ -233,14 +236,15 @@ export default function WindowsTab({
         key: "actions",
         width: 120,
         render: (_: any, w: AdminWindow) => (
-          <Button onClick={() => openEditWindow(w)}>Edit</Button>
+          <Button disabled={!canManage} onClick={() => openEditWindow(w)}>Edit</Button>
         ),
       },
     ] as any[];
-  }, [isMobile]);
+  }, [isMobile, canManage]);
 
   return (
     <Card
+      title="Active ordering"
       styles={{ body: { padding: isMobile ? 12 : undefined } }}
       extra={
         isMobile ? (
@@ -253,7 +257,7 @@ export default function WindowsTab({
               Active: {activeCount}
             </Tag>
 
-            <Button type="primary" onClick={openCreateWindow} block>
+            <Button disabled={!canManage} type="primary" onClick={openCreateWindow} block>
               New Window
             </Button>
           </div>
@@ -262,7 +266,7 @@ export default function WindowsTab({
             <Text type="secondary">
               Active windows: <b>{activeCount}</b>
             </Text>
-            <Button type="primary" onClick={openCreateWindow}>
+            <Button disabled={!canManage} type="primary" onClick={openCreateWindow}>
               New Window
             </Button>
           </Space>

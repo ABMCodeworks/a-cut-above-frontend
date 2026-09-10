@@ -8,7 +8,7 @@ import AdminShell from "../../components/AdminShell";
 import OrdersTab from "../../components/OrdersTab";
 import ProductsTab from "../../components/ProductsTab";
 import CategoriesTab from "../../components/CategoriesTab";
-import WindowsTab from "../../components/WindowsTab";
+import SettingsTab from "../../components/SettingsTab";
 import DropoffLocationsTab from "../../components/DropoffLocationsTab";
 import DashboardTab from "../../components/DashboardTab";
 import UsersTab from "../../components/UsersTab";
@@ -358,7 +358,9 @@ export default function AdminDashboardPage() {
                 ? "privacy"
               : canViewCarcassWeights
                 ? "carcass-weights"
-                : "dashboard";
+                : canViewWindows
+                  ? "windows"
+                  : "dashboard";
 
   // Persist the selected tab in the URL so a refresh keeps the user on the
   // same tab instead of resetting to the dashboard.
@@ -551,11 +553,12 @@ export default function AdminDashboardPage() {
             ? [
               {
                 key: "windows",
-                label: "Active Ordering",
+                label: "Settings",
                 children: (
-                  <WindowsTab
+                  <SettingsTab
                     loading={loading}
                     windows={windows}
+                    canManage={hasPermission(myPermissions, "windows.manage")}
                     onReload={loadAll}
                   />
                 ),

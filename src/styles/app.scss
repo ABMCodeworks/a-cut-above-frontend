@@ -1011,3 +1011,94 @@ body {
   gap: 5px;
   min-width: 230px;
 }
+
+/* Admin sign-in */
+.aca-login {
+  width: 100%;
+  max-width: 1000px;
+  margin: clamp(12px, 4vh, 48px) auto;
+
+  &__navigation {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    a, > span { display: inline-flex; align-items: center; gap: 8px; }
+    a { color: var(--aca-text); }
+    > span { color: var(--aca-muted); }
+  }
+
+  &__card {
+    display: grid;
+    grid-template-columns: 0.95fr 1.05fr;
+    overflow: hidden;
+    background: var(--aca-card);
+    border: 1px solid var(--aca-border);
+    border-radius: 24px;
+    box-shadow: 0 22px 64px rgba(31, 55, 30, 0.08);
+  }
+
+  &__brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 36px 36px 42px;
+    text-align: center;
+    color: #f7e8c9;
+    background: #24492a;
+  }
+
+  &__wordmark {
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    span { display: block; margin-top: 6px; font-family: inherit; font-size: 10px; letter-spacing: 0.38em; }
+  }
+
+  &__logo { width: 180px; height: 180px; object-fit: contain; margin: 28px 0; }
+  &__eyebrow { margin: 0 0 12px; font-size: 10px; font-weight: 700; letter-spacing: 0.18em; }
+  &__brand-copy {
+    h2 { margin: 0 0 16px; font-family: "Playfair Display", Georgia, serif; font-size: 42px; font-weight: 500; line-height: 1.1; letter-spacing: -0.025em; color: #fff5e1; }
+    > p:last-child { margin: 0; font-size: 13px; line-height: 1.8; color: #d9e1d3; }
+  }
+
+  &__panel { padding: 48px 48px 36px; min-width: 0; align-self: center; }
+  &__icon { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border: 1px solid var(--aca-border); border-radius: 12px; margin-bottom: 24px; color: var(--aca-forest); background: var(--aca-bg2); font-size: 18px; }
+  &__heading {
+    > .aca-login__eyebrow { color: var(--aca-muted); }
+    h1 { margin: 0 0 10px; font-family: "Playfair Display", Georgia, serif; font-size: clamp(30px, 3vw, 38px); font-weight: 500; line-height: 1.2; letter-spacing: -0.03em; color: var(--aca-text); }
+    > p:last-child { margin: 0 0 28px; color: var(--aca-muted); font-size: 14px; line-height: 1.6; }
+  }
+
+  &__form {
+    .ant-form-item { margin-bottom: 20px; }
+    .ant-form-item-label > label { font-size: 13px; font-weight: 600; color: var(--aca-text); }
+    .ant-input-affix-wrapper { min-height: 50px; border-radius: 10px; padding-inline: 14px; }
+    .ant-input-prefix { margin-right: 10px; color: var(--aca-muted); }
+    .ant-input { font-size: 16px; }
+  }
+  &__submit.ant-btn { height: 50px; border-radius: 10px; margin-top: 4px; font-size: 14px; font-weight: 600; box-shadow: none; }
+  &__error { margin-bottom: 20px; }
+  &__checking { min-height: 210px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; color: var(--aca-muted); }
+  &__help { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--aca-border); font-size: 12px; line-height: 1.7; color: var(--aca-muted); strong { color: var(--aca-text); font-weight: 600; } p { margin: 3px 0 0; } a { display: block; margin-top: 5px; font-weight: 600; } }
+  &__footnote { margin: 22px 0 0; text-align: center; color: var(--aca-muted); font-size: 11px; line-height: 1.7; span { margin-inline: 6px; } }
+  a:focus-visible { outline: 2px solid var(--aca-leaf); outline-offset: 5px; border-radius: 2px; }
+}
+
+@media (max-width: 700px) {
+  .aca-login {
+    max-width: 440px;
+    margin: 4px auto 16px;
+    &__card { grid-template-columns: 1fr; border-radius: 18px; }
+    &__brand { padding: 20px 24px; flex-direction: row-reverse; justify-content: flex-end; gap: 16px; text-align: left; }
+    &__wordmark { font-size: 16px; span { font-size: 9px; margin-top: 5px; } }
+    &__logo { width: 58px; height: 58px; margin: 0; }
+    &__brand-copy { display: none; }
+    &__panel { padding: 28px 24px; }
+    &__icon { display: none; }
+    &__navigation { font-size: 12px; }
+  }
+}

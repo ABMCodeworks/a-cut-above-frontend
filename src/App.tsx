@@ -23,6 +23,7 @@ import {
 } from "./pages/public/LegalPages";
 import PrivacyPreferencesBanner from "./components/PrivacyPreferencesBanner";
 
+import AdminSetupPage from "./pages/admin/AdminSetupPage";
 import AdminLoginPage from "./pages/admin/AdminLoginPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 
@@ -126,6 +127,8 @@ export default function App() {
             <Route path="/privacy-rights" element={<PrivacyRightsPage />} />
 
             <Route path="/admin" element={<AdminLoginPage />} />
+            <Route path="/admin/setup" element={<AdminSetupPage initial />} />
+            <Route path="/admin/register" element={<AdminSetupPage />} />
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           </Routes>
         </Content>

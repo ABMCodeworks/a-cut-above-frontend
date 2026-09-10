@@ -1,10 +1,9 @@
-// src/pages/admin/AdminLoginPage.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, Space, Typography, message } from "antd";
-import { useNavigate } from "../../lib/router";
-import { api, API_BASE } from "../../api/client";
-
-const { Title, Text } = Typography;
+import React, { useEffect, useState } from "react";
+import { Alert, Button, Form, Input, Spin, message } from "antd";
+import { ArrowLeftOutlined, ArrowRightOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
+import { Link, useNavigate } from "../../lib/router";
+import { api } from "../../api/client";
+import logo from "../../assets/logo.webp";
 
 type LoginForm = { email: string; password: string };
 
@@ -12,118 +11,88 @@ export default function AdminLoginPage() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  const initialValues = useMemo(
-    () => ({
-      email: "admin@acutabove.local",
-      password: "admin123",
-    }),
-    [],
-  );
+  const [error, setError] = useState("");
+  const [setupAvailable, setSetupAvailable] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    api.get("/api/admin/auth/setup-status")
+      .then(({ data }) => { if (active) setSetupAvailable(data.available); })
+      .catch(() => {});
     (async () => {
       try {
-        // If already logged in, jump to dashboard
         await api.get("/api/admin/me");
-        navigate("/admin/dashboard");
+        if (active) navigate("/admin/dashboard");
       } catch {
-        // not logged in
+        // An unauthenticated visitor can sign in below.
       } finally {
-        setChecking(false);
+        if (active) setChecking(false);
       }
     })();
+    return () => { active = false; };
   }, [navigate]);
 
   async function login(values: LoginForm) {
-    const payload = {
-      email: String(values.email || "")
-        .trim()
-        .toLowerCase(),
-      password: String(values.password || ""),
-    };
-
     setSubmitting(true);
+    setError("");
     try {
-      // ✅ Show which server you're actually talking to
-      // (helps catch "wrong API_BASE" instantly)
-      // eslint-disable-next-line no-console
-      console.log("Admin login -> API_BASE:", API_BASE, "payload:", {
-        ...payload,
-        password: "***",
+      await api.post("/api/admin/auth/login", {
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
       });
-
-      await api.post("/api/admin/auth/login", payload);
-
-      // ✅ Immediately verify session/token really works
       await api.get("/api/admin/me");
-
       message.success("Logged in");
       navigate("/admin/dashboard");
     } catch (e: any) {
-      // More helpful error surface
-      const status = e?.response?.status;
-      const serverMsg = e?.response?.data?.error || e?.response?.data?.message;
-
-      message.error(
-        serverMsg ||
-          (status
-            ? `Login failed (${status})`
-            : "Login failed — check API_BASE / backend"),
-      );
-
-      // eslint-disable-next-line no-console
-      console.error("Admin login error:", {
-        status,
-        data: e?.response?.data,
-        base: API_BASE,
-      });
+      setError(e?.response?.data?.error || "We couldn’t sign you in. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (checking) return null;
-
   return (
-    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <Title level={2} style={{ margin: 0 }}>
-        Admin Login
-      </Title>
-
-      <Card style={{ maxWidth: 420 }}>
-        <Form layout="vertical" onFinish={login} initialValues={initialValues}>
-          <Form.Item
-            name="email"
-            label="Email"
-            rules={[{ required: true }, { type: "email" }]}
-          >
-            <Input autoComplete="username" />
-          </Form.Item>
-
-          <Form.Item
-            name="password"
-            label="Password"
-            rules={[{ required: true }]}
-          >
-            <Input.Password autoComplete="current-password" />
-          </Form.Item>
-
-          <Button type="primary" htmlType="submit" block loading={submitting}>
-            Log in
-          </Button>
-        </Form>
-
-        <div style={{ marginTop: 12 }}>
-          <Text type="secondary">
-            Using API: <b>{API_BASE}</b>
-          </Text>
-          <br />
-          <Text type="secondary">
-            Default seed credentials are prefilled for local dev.
-          </Text>
-        </div>
-      </Card>
-    </Space>
+    <main className="aca-login">
+      <div className="aca-login__navigation">
+        <Link to="/"><ArrowLeftOutlined aria-hidden="true" /> Back to the shop</Link>
+        <span><LockOutlined aria-hidden="true" /> Team access</span>
+      </div>
+      <div className="aca-login__card">
+        <section className="aca-login__brand" aria-label="A Cut Above Meats">
+          <div className="aca-login__wordmark">A CUT ABOVE <span>MEATS</span></div>
+          <img className="aca-login__logo" src={logo} alt="A Cut Above cattle emblem" />
+          <div className="aca-login__brand-copy">
+            <p className="aca-login__eyebrow">THE ADMIN WORKSPACE</p>
+            <h2>A cut above.<br />Every day.</h2>
+            <p>Your orders, your products, your team.<br />All in one place.</p>
+          </div>
+        </section>
+        <section className="aca-login__panel" aria-labelledby="login-heading" aria-busy={checking}>
+          <div className="aca-login__heading">
+            <span className="aca-login__icon"><LockOutlined aria-hidden="true" /></span>
+            <p className="aca-login__eyebrow">ADMIN LOGIN</p>
+            <h1 id="login-heading">Welcome back.</h1>
+            <p>Sign in to your A Cut Above workspace.</p>
+          </div>
+          {checking ? <div className="aca-login__checking" role="status"><Spin /><span>Checking your session…</span></div> :
+            <Form layout="vertical" onFinish={login} requiredMark={false} size="large" className="aca-login__form" disabled={submitting}>
+              {error && <Alert className="aca-login__error" type="error" showIcon title={error} role="alert" />}
+              <Form.Item name="email" label="Email address" rules={[{ required: true, message: "Enter your email address" }, { type: "email", message: "Enter a valid email address" }]}>
+                <Input prefix={<MailOutlined aria-hidden="true" />} placeholder="you@example.com" autoComplete="username" type="email" autoCapitalize="none" spellCheck={false} />
+              </Form.Item>
+              <Form.Item name="password" label="Password" rules={[{ required: true, message: "Enter your password" }]}>
+                <Input.Password prefix={<LockOutlined aria-hidden="true" />} placeholder="Enter your password" autoComplete="current-password" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" block loading={submitting} className="aca-login__submit">
+                Sign in <ArrowRightOutlined aria-hidden="true" />
+              </Button>
+            </Form>}
+          <div className="aca-login__help">
+            {setupAvailable ? <><strong>Setting up for the first time?</strong><Link to="/admin/setup">Create your first admin account <ArrowRightOutlined aria-hidden="true" /></Link></> :
+              <><strong>Need access?</strong><p>Ask your administrator for an invitation link and access code.</p></>}
+          </div>
+        </section>
+      </div>
+      <p className="aca-login__footnote">A Cut Above Meats <span aria-hidden="true">·</span> Made for the team behind the quality.</p>
+    </main>
   );
 }

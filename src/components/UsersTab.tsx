@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -71,10 +72,10 @@ const PERMISSION_GROUPS: {
       ],
     },
     {
-      title: "Windows",
+      title: "Settings",
       items: [
-        { label: "View order windows", value: "windows.view" },
-        { label: "Manage order windows", value: "windows.manage" },
+        { label: "View settings", value: "windows.view" },
+        { label: "Manage settings", value: "windows.manage" },
       ],
     },
     {
@@ -135,10 +136,25 @@ export default function UsersTab({
 
   const canManageUsers = hasPermission(currentPermissions, "users.manage");
 
-  const allPermissions = useMemo(
-    () => PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => i.value)),
-    [],
-  );
+  const [saving, setSaving] = useState(false);
+  const [invite, setInvite] = useState<{ path: string; code: string; email: string; expiresAt: string } | null>(null);
+  const [invitations, setInvitations] = useState<{ id: string; email: string; expiresAt: string; usedAt: string | null; revokedAt: string | null; attempts: number }[]>([]);
+  const [inviteError, setInviteError] = useState("");
+  async function loadInvitations() {
+    try {
+      const { data } = await api.get("/api/admin/users/invitations");
+      setInvitations(data.invitations);
+      setInviteError("");
+    } catch { setInviteError("Could not load invitations. Please retry."); }
+  }
+  useEffect(() => { if (canManageUsers) void loadInvitations(); }, [canManageUsers]);
+  async function revokeInvitation(id: string) {
+    try {
+      await api.delete(`/api/admin/users/invitations/${id}`);
+      await loadInvitations();
+      message.success("Invitation revoked");
+    } catch { message.error("Could not revoke invitation"); }
+  }
 
   function openCreate() {
     setEditingUser(null);
@@ -168,7 +184,7 @@ export default function UsersTab({
 
   async function saveUser() {
     const values = await form.validateFields();
-
+    setSaving(true);
     try {
       if (editingUser) {
         await api.put(`/api/admin/users/${editingUser.id}`, {
@@ -180,21 +196,21 @@ export default function UsersTab({
         });
         message.success("User updated");
       } else {
-        await api.post("/api/admin/users", {
+        const { data } = await api.post("/api/admin/users/invitations", {
           name: values.name?.trim() || null,
           email: values.email.trim(),
-          password: values.password,
-          isActive: values.isActive,
           permissions: values.permissions || [],
         });
-        message.success("User created");
+        setInvite(data);
+        void loadInvitations();
+        message.success("Invitation generated");
       }
 
       setOpen(false);
       onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Failed to save user");
-    }
+    } finally { setSaving(false); }
   }
 
   async function toggleUserActive(user: AdminUserRecord, isActive: boolean) {
@@ -286,7 +302,7 @@ export default function UsersTab({
       extra={
         canManageUsers ? (
           <Button type="primary" onClick={openCreate}>
-            New User
+            Invite admin
           </Button>
         ) : null
       }
@@ -298,12 +314,34 @@ export default function UsersTab({
         columns={columns as any}
       />
 
+      {canManageUsers && <Card size="small" title="Invitations" extra={<Button onClick={loadInvitations}>Refresh</Button>} style={{ marginTop: 24 }}>
+        {inviteError && <Alert type="error" title={inviteError} />}
+        <Table rowKey="id" dataSource={invitations} pagination={{ pageSize: 5 }} columns={[
+          { title: "Email", dataIndex: "email" },
+          { title: "Expires", render: (_, row) => new Date(row.expiresAt).toLocaleString() },
+          { title: "Status", render: (_, row) => row.usedAt ? "Accepted" : row.revokedAt ? "Revoked" : row.attempts >= 5 ? "Locked" : new Date(row.expiresAt) <= new Date() ? "Expired" : "Pending" },
+          { title: "", render: (_, row) => !row.usedAt && !row.revokedAt && <Popconfirm title="Revoke this invitation?" onConfirm={() => revokeInvitation(row.id)}><Button danger>Revoke</Button></Popconfirm> },
+        ]} />
+      </Card>}
+      <Modal title="Admin invitation ready" open={!!invite} onCancel={() => setInvite(null)} footer={<Button onClick={() => setInvite(null)}>Done</Button>}>
+        {invite && <Space direction="vertical" style={{ width: "100%" }}>
+          <Alert type="success" showIcon title={`Invitation for ${invite.email}`} />
+          <Text>Copy these now. The code is shown only once. Send the link and code separately to the recipient.</Text>
+          <Text strong>Invitation link</Text>
+          <Typography.Paragraph copyable style={{ wordBreak: "break-all" }}>{new URL(invite.path, window.location.origin).href}</Typography.Paragraph>
+          <Text strong>Access code</Text>
+          <Typography.Paragraph copyable code>{invite.code}</Typography.Paragraph>
+          <Text>Expires: {new Date(invite.expiresAt).toLocaleString()}. Works once. Five incorrect attempts lock the invitation.</Text>
+        </Space>}
+      </Modal>
+
       <Modal
-        title={editingUser ? "Edit User" : "New User"}
+        title={editingUser ? "Edit User" : "Invite admin"}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={saveUser}
-        okText="Save"
+        okText={editingUser ? "Save" : "Generate link and code"}
+        confirmLoading={saving}
         width={760}
       >
         <Form layout="vertical" form={form}>
@@ -322,29 +360,10 @@ export default function UsersTab({
             <Input />
           </Form.Item>
 
-          <Form.Item
-            name="password"
-            label={editingUser ? "New password (optional)" : "Password"}
-            rules={
-              editingUser
-                ? []
-                : [
-                  { required: true, message: "Password is required" },
-                  { min: 6, message: "Minimum 6 characters" },
-                ]
-            }
-          >
-            <Input.Password />
-          </Form.Item>
-
-          <Form.Item
-            name="isActive"
-            label="Active"
-            valuePropName="checked"
-            initialValue={true}
-          >
-            <Switch />
-          </Form.Item>
+          {editingUser ? <>
+            <Form.Item name="password" label="New password (optional)" rules={[{ min: 12, message: "Minimum 12 characters" }]}><Input.Password autoComplete="new-password" /></Form.Item>
+            <Form.Item name="isActive" label="Active" valuePropName="checked"><Switch /></Form.Item>
+          </> : <Alert style={{ marginBottom: 16 }} type="info" showIcon title="Generate a link and a separate code. The recipient will choose their own name and password. Both are required to create the account." />}
 
           <Form.Item
             name="permissions"
