@@ -66,6 +66,7 @@ function statusLabel(status: string) {
 }
 
 function money(n: any) {
+  if (n == null) return "—";
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
   return `$${x.toFixed(2)}`;
@@ -343,6 +344,18 @@ export default function TrackOrderPage() {
               rowKey={(r: any) => `${r.productName}-${String(r.id || "")}`}
               dataSource={order.items as any[]}
               pagination={false}
+              summary={() => order.total != null ? (
+                <Table.Summary>
+                  <Table.Summary.Row>
+                    <Table.Summary.Cell index={0} colSpan={2}>
+                      <Text strong>Total</Text>
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={2} align="right">
+                      <Text strong>{money(order.total)}</Text>
+                    </Table.Summary.Cell>
+                  </Table.Summary.Row>
+                </Table.Summary>
+              ) : null}
               columns={[
                 {
                   title: "Product",

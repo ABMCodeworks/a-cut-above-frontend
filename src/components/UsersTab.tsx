@@ -38,10 +38,18 @@ function hasPermission(
   return permissions.includes("admin.full") || permissions.includes(needed);
 }
 
+function normalizePermissions(permissions: AdminPermission[] = []): AdminPermission[] {
+  return permissions.includes("admin.full") ? ["admin.full"] : permissions;
+}
+
 const PERMISSION_GROUPS: {
   title: string;
   items: { label: string; value: AdminPermission }[];
 }[] = [
+    {
+      title: "Everything",
+      items: [{ label: "Full admin access", value: "admin.full" }],
+    },
     {
       title: "Dashboard",
       items: [{ label: "View dashboard", value: "dashboard.view" }],
@@ -113,10 +121,6 @@ const PERMISSION_GROUPS: {
         { label: "Manage privacy requests", value: "privacy.manage" },
       ],
     },
-    {
-      title: "Everything",
-      items: [{ label: "Full admin access", value: "admin.full" }],
-    },
   ];
 
 export default function UsersTab({
@@ -133,6 +137,8 @@ export default function UsersTab({
   const [open, setOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUserRecord | null>(null);
   const [form] = Form.useForm<UserForm>();
+  const selectedPermissions = Form.useWatch("permissions", form) as AdminPermission[] | undefined;
+  const fullAdminSelected = selectedPermissions?.includes("admin.full") ?? false;
 
   const canManageUsers = hasPermission(currentPermissions, "users.manage");
 
@@ -177,7 +183,7 @@ export default function UsersTab({
       email: user.email,
       password: "",
       isActive: user.isActive,
-      permissions: user.permissions || [],
+      permissions: normalizePermissions(user.permissions),
     });
     setOpen(true);
   }
@@ -192,14 +198,14 @@ export default function UsersTab({
           email: values.email.trim(),
           password: values.password?.trim() || undefined,
           isActive: values.isActive,
-          permissions: values.permissions || [],
+          permissions: normalizePermissions(values.permissions),
         });
         message.success("User updated");
       } else {
         const { data } = await api.post("/api/admin/users/invitations", {
           name: values.name?.trim() || null,
           email: values.email.trim(),
-          permissions: values.permissions || [],
+          permissions: normalizePermissions(values.permissions),
         });
         setInvite(data);
         void loadInvitations();
@@ -219,7 +225,7 @@ export default function UsersTab({
         name: user.name ?? null,
         email: user.email,
         isActive,
-        permissions: user.permissions || [],
+        permissions: normalizePermissions(user.permissions),
       });
       message.success(isActive ? "User activated" : "User disabled");
       onReload();
@@ -262,7 +268,9 @@ export default function UsersTab({
       key: "permissions",
       render: (_: any, u: AdminUserRecord) => (
         <Space size={[4, 4]} wrap>
-          {(u.permissions || []).length === 0 ? (
+          {u.permissions?.includes("admin.full") ? (
+            <Tag color="blue">Full admin access</Tag>
+          ) : (u.permissions || []).length === 0 ? (
             <Tag>None</Tag>
           ) : (
             u.permissions.map((p) => <Tag key={p}>{p}</Tag>)
@@ -369,13 +377,15 @@ export default function UsersTab({
           <Form.Item
             name="permissions"
             label="Permissions"
+            normalize={normalizePermissions}
+            extra={fullAdminSelected ? "Full admin access automatically includes every permission. Uncheck it to choose individual permissions." : undefined}
             rules={[
               { required: true, message: "Select at least one permission" },
             ]}
           >
             <Checkbox.Group style={{ width: "100%" }}>
               <div style={{ display: "grid", gap: 14 }}>
-                {PERMISSION_GROUPS.map((group) => (
+                {PERMISSION_GROUPS.filter((group) => !fullAdminSelected || group.items.some((item) => item.value === "admin.full")).map((group) => (
                   <Card key={group.title} size="small" title={group.title}>
                     <div style={{ display: "grid", gap: 8 }}>
                       {group.items.map((item) => (

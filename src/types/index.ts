@@ -1,6 +1,7 @@
 export type PricingTier = "RETAIL" | "WHOLESALE";
 
 export type Product = {
+  bestSellerRank?: number;
   id: string;
   name: string;
   description?: string | null;
@@ -40,6 +41,7 @@ export type OrderTrackItem = {
 };
 
 export type TrackedOrder = {
+  total: string | number | null;
   orderNo: string;
   customerName: string;
   status: string;

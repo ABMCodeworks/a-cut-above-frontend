@@ -334,6 +334,7 @@ export default function ShopPage() {
       setProducts(
         raw.map((p) => ({
           id: String(p.id),
+          bestSellerRank: p.bestSellerRank ?? undefined,
           name: String(p.name),
           description: p.description ?? null,
           unit: String(p.unit),
@@ -500,6 +501,12 @@ export default function ShopPage() {
 
       return p.pricePerPack ?? p.price ?? 0;
     };
+
+    if (sort === "featured") {
+      list = [...list].sort((a, b) =>
+        (a.bestSellerRank ?? Number.MAX_SAFE_INTEGER) - (b.bestSellerRank ?? Number.MAX_SAFE_INTEGER),
+      );
+    }
 
     if (sort === "price_asc") {
       list = [...list].sort((a, b) => unitPrice(a) - unitPrice(b));
