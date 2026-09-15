@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { CartItem, Product } from '../types';
+import { api } from '../api/client';
 
 type CartCtx = {
   items: CartItem[];
@@ -27,11 +28,34 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
+  // Stored carts must not retain yesterday's promotional prices or stock counts.
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await api.get('/api/public/products');
+        if (!active) return;
+        const products = new Map<string, Product>((response.data.products || []).map((p: Product) => [p.id, p]));
+        setItems(previous => {
+          const next = previous.map(item => {
+            const fresh = products.get(item.product.id);
+            return fresh ? { ...item, product: { ...item.product, ...fresh } } : item;
+          });
+          return JSON.stringify(next) === JSON.stringify(previous) ? previous : next;
+        });
+      } catch { /* Checkout validates prices and availability again on submission. */ }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, []);
+
   const add = (product: Product, qty = 1) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
       if (existing) {
-        return prev.map((i) => (i.product.id === product.id ? { ...i, qty: i.qty + qty } : i));
+        return prev.map((i) => (i.product.id === product.id ? { ...i, product, qty: i.qty + qty } : i));
       }
       return [...prev, { product, qty }];
     });

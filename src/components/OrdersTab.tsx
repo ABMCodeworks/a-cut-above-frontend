@@ -89,6 +89,7 @@ type PackingStateItem = {
 };
 
 type AdminCreateProduct = {
+  avgWeightG?: number | null;
   id: string;
   name: string;
   unit: string;
@@ -1033,10 +1034,15 @@ export default function OrdersTab({
     () =>
       adminProducts
         .filter((p) => !p.isForProcessing)
-        .map((p) => ({
-          value: p.id,
-          label: `${p.name} (${String(p.unit || "pack")})`,
-        })),
+        .map((p) => {
+          const grams = Number(p.avgWeightG || 0);
+          const size = grams >= 1000 ? `${grams / 1000} kg` : `${grams} g`;
+          const unit = String(p.unit || "pack");
+          const description = grams > 0
+            ? `${size} ${unit.toLowerCase() === "kg" ? "avg / pack" : "pack"}`
+            : unit;
+          return { value: p.id, label: `${p.name} (${description})` };
+        }),
     [adminProducts],
   );
 
@@ -1483,7 +1489,7 @@ export default function OrdersTab({
     for (const item of order.items || []) {
       state[item.id] = {
         itemId: item.id,
-        packed: false,
+        packed: isKgItem(item) && parseExistingWeights(item).every(w => Number(w.value) > 0),
         weights: isKgItem(item) ? parseExistingWeights(item as any) : [],
       };
     }
@@ -1878,7 +1884,6 @@ export default function OrdersTab({
       "Customer / Company",
       "Phone",
       "Order No",
-      "No. of Bags",
       ...productNames,
     ];
     const rows: any[][] = [];
@@ -1893,7 +1898,6 @@ export default function OrdersTab({
         orderDisplayName(o),
         o.customerPhone ?? "",
         o.orderNo ?? "",
-        Number(o.bagCount) > 0 ? Number(o.bagCount) : "",
       ];
 
       const qtyByProduct: Record<string, number> = {};
@@ -1921,7 +1925,6 @@ export default function OrdersTab({
       "TOTALS",
       "",
       "",
-      "",
       ...productNames.map((p) => totals[p] || 0),
     ];
 
@@ -1930,7 +1933,6 @@ export default function OrdersTab({
       { width: 22 },
       { width: 16 },
       { width: 18 },
-      { width: 14 },
       ...productNames.map((p) => ({
         width: Math.max(12, Math.min(32, p.length + 2)),
       })),
@@ -2013,128 +2015,29 @@ export default function OrdersTab({
       return;
     }
 
-    const productSet = new Set<string>();
-
-    for (const order of ordersToExport) {
-      for (const item of order.items || []) {
-        const name = itemProductLabel(item).trim();
-        if (name) productSet.add(name);
-      }
-    }
-
-    const productNames = Array.from(productSet).sort((a, b) =>
-      a.localeCompare(b),
-    );
-
     const headers = [
-      "Customer / Company",
-      "Phone",
-      "Address",
-      "Order No",
-      "Location",
-      ...productNames,
-      "Pre-discount Total",
-      "Discount",
-      "Discount %",
-      "Discount Code",
-      "Total After Discount",
+      "Customer / Company", "Phone", "Address", "Order No", "Location",
+      "No. of Bags", "Pre-discount Total", "Discount", "Discount %",
+      "Discount Code", "Total After Discount",
     ];
-    const rows: any[][] = [];
-    const totals: Record<
-      string,
-      { amount: number; packets: number; isKg: boolean }
-    > = {};
     let grandTotal = 0;
-
-    for (const productName of productNames) {
-      totals[productName] = { amount: 0, packets: 0, isKg: false };
-    }
-
-    for (const order of ordersToExport) {
-      const qtyByProduct: Record<string, any> = {};
-
-      for (const item of order.items || []) {
-        const name = itemProductLabel(item).trim();
-        if (!name) continue;
-
-        const amount = itemAmountForList(item);
-        qtyByProduct[name] = amount;
-
-        const kgItem = isKgItem(item);
-        const numericAmount = kgItem
-          ? Number((item as any).weightKg || 0)
-          : Number((item as any).qty || 0);
-
-        totals[name].amount += Number.isFinite(numericAmount)
-          ? numericAmount
-          : 0;
-        totals[name].packets += kgItem ? packedPacketCount(item) : 0;
-        totals[name].isKg = totals[name].isKg || kgItem;
-      }
-
-      const subtotal = Number((order as any).subtotal || 0);
-      const discountTotal = Number((order as any).discountTotal || 0);
-      const orderTotal = Number((order as any).total || 0);
-      const discountPercent =
-        subtotal > 0 ? (discountTotal / subtotal) * 100 : 0;
-      grandTotal += Number.isFinite(orderTotal) ? orderTotal : 0;
-
-      rows.push([
-        orderDisplayName(order),
-        order.customerPhone ?? "",
-        orderAddress(order),
-        order.orderNo ?? "",
-        orderLocationName(order),
-        ...productNames.map((productName) => qtyByProduct[productName] || ""),
-        Number.isFinite(subtotal) ? subtotal : 0,
-        Number.isFinite(discountTotal) ? discountTotal : 0,
-        Number.isFinite(discountPercent) ? discountPercent / 100 : 0,
-        (order as any).discountCode || "",
-        orderTotal,
-      ]);
-    }
-
-    const totalsRow = [
-      "TOTALS",
-      "",
-      "",
-      "",
-      "",
-      ...productNames.map((productName) => {
-        const total = totals[productName];
-
-        if (!total) return 0;
-
-        if (total.isKg) {
-          const packetLabel = `${total.packets} packet${
-            total.packets === 1 ? "" : "s"
-          }`;
-          return `${packetLabel} / ${total.amount.toFixed(3)} kg`;
-        }
-
-        return total.amount || 0;
-      }),
-      "",
-      "",
-      "",
-      "",
-      grandTotal,
-    ];
-
+    let totalBags = 0;
+    const rows = ordersToExport.map(order => {
+      const subtotal = Number(order.subtotal || 0);
+      const discount = Number(order.discountTotal || 0);
+      const total = Number(order.total || 0);
+      const bags = Number(order.bagCount || 0);
+      grandTotal += total;
+      totalBags += bags;
+      return [orderDisplayName(order), order.customerPhone ?? "", orderAddress(order),
+        order.orderNo ?? "", orderLocationName(order), bags || "", subtotal,
+        discount, subtotal > 0 ? discount / subtotal : 0, order.discountCode || "", total];
+    });
+    const totalsRow = ["TOTALS", "", "", "", "", totalBags, "", "", "", "", grandTotal];
     const columns = [
-      { width: 24 },
-      { width: 16 },
-      { width: 32 },
-      { width: 18 },
-      { width: 18 },
-      ...productNames.map((productName) => ({
-        width: Math.max(12, Math.min(32, productName.length + 2)),
-      })),
-      { width: 18 },
-      { width: 14 },
-      { width: 12, format: "0.0%" },
-      { width: 16 },
-      { width: 14 },
+      { width: 24 }, { width: 16 }, { width: 32 }, { width: 18 }, { width: 18 },
+      { width: 14 }, { width: 18 }, { width: 14 }, { width: 12, format: "0.0%" },
+      { width: 16 }, { width: 14 },
     ];
 
     const label = exportingSelection
@@ -3024,7 +2927,7 @@ export default function OrdersTab({
               </Card>
 
               <Card size="small">
-                <Text type="secondary">Number of bags</Text>
+                <Text type="secondary">Number of bags for delivery</Text>
                 <InputNumber
                   min={1}
                   precision={0}

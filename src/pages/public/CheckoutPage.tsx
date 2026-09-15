@@ -71,6 +71,7 @@ type StockIssue = {
 
 type DiscountPreview = {
   code: string;
+  expiresAt?: string;
   discountType: "PERCENT" | "FIXED";
   value: number;
   subtotal: number;
@@ -270,7 +271,7 @@ export default function CheckoutPage() {
   }, [items]);
 
   const cartSignature = useMemo(
-    () => items.map((i) => `${i.product.id}:${Number(i.qty || 0)}`).join("|"),
+    () => items.map((i) => `${i.product.id}:${Number(i.qty || 0)}:${i.product.price}:${i.product.discountPercent}`).join("|"),
     [items],
   );
 
@@ -371,6 +372,20 @@ export default function CheckoutPage() {
       setDiscountChecking(false);
     }
   }
+
+  useEffect(() => {
+    if (!discountPreview?.expiresAt) return;
+    const expiresAt = new Date(discountPreview.expiresAt).getTime();
+    const checkExpiry = () => {
+      if (Number.isFinite(expiresAt) && expiresAt > Date.now()) return;
+      setDiscountPreview(null);
+      setDiscountCodeInput("");
+      message.warning("Your discount code has expired and has been removed.");
+    };
+    checkExpiry();
+    const timer = window.setInterval(checkExpiry, 1000);
+    return () => window.clearInterval(timer);
+  }, [discountPreview]);
 
   function issueUi(issue?: StockIssue | null) {
     if (!issue) return null;
@@ -1258,6 +1273,15 @@ export default function CheckoutPage() {
                               >
                                 {it.product.name}
                               </Text>
+
+                              {avgWeightKg ? (
+                                <Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+                                  Average weight per packet:{" "}
+                                  {avgWeightKg >= 1
+                                    ? `${avgWeightKg.toFixed(2)} kg`
+                                    : `${Number((avgWeightKg * 1000).toFixed(3))} g`}
+                                </Text>
+                              ) : null}
 
                               {unitPrice > 0 ? (
                                 <div style={{ display: "grid", gap: 2 }}>

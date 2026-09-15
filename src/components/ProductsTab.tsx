@@ -169,7 +169,8 @@ export default function ProductsTab({
     Form.useWatch("ingredients", manufactureForm) || [];
 
   const [groupByCategory, setGroupByCategory] = useState(true);
-  const [showArchived, setShowArchived] = useState(false);
+  const [productView, setProductView] = useState<"active" | "hidden" | "archived">("active");
+  const showArchived = productView === "archived";
   const [showProcessingProducts, setShowProcessingProducts] = useState(false);
   const [visibilityUpdatingIds, setVisibilityUpdatingIds] = useState<string[]>(
     [],
@@ -204,6 +205,7 @@ export default function ProductsTab({
     const query = search.trim().toLowerCase();
     return products.filter((p) => {
       if (showArchived ? p.isActive : !p.isActive) return false;
+      if (productView === "hidden" && !p.isHiddenFromShop && !p.isForProcessing) return false;
       if (showProcessingProducts && !p.isForProcessing) return false;
       if (!query) return true;
       return (
@@ -213,7 +215,12 @@ export default function ProductsTab({
         (p.category?.name || "").toLowerCase().includes(query)
       );
     });
-  }, [products, showArchived, showProcessingProducts, search]);
+  }, [products, productView, showArchived, showProcessingProducts, search]);
+
+  const hiddenCount = useMemo(
+    () => products.filter((p) => p.isActive && (p.isHiddenFromShop || p.isForProcessing)).length,
+    [products],
+  );
 
   const archivedCount = useMemo(
     () => products.filter((p) => !p.isActive).length,
@@ -382,7 +389,6 @@ export default function ProductsTab({
         discountPercent: Number((p as any).discountPercent ?? 0),
         discountStartsAt: (p as any).discountStartsAt ?? null,
         discountExpiresAt: (p as any).discountExpiresAt ?? null,
-        stockQty: p.stockQty,
         processingStockWeightKg: Number(p.processingStockWeightKg || 0),
         isActive: true,
         isHiddenFromShop: Boolean(p.isHiddenFromShop),
@@ -509,7 +515,11 @@ export default function ProductsTab({
 
     try {
       if (editingProduct) {
-        await api.put(`/api/admin/products/${editingProduct.id}`, payload);
+        await api.put(`/api/admin/products/${editingProduct.id}`, {
+          ...payload,
+          stockQty: values.stockQty === editingProduct.stockQty ? undefined : values.stockQty,
+          expectedStockQty: editingProduct.stockQty,
+        });
         if (pendingImageFile) {
           await uploadImage(editingProduct.id, pendingImageFile);
         }
@@ -784,16 +794,22 @@ export default function ProductsTab({
       title: "Name",
       dataIndex: "name",
       key: "name",
-      width: 115,
+      width: 200,
+      ellipsis: false,
       render: (_: any, p: AdminProduct) => (
-        <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
-          <Text
-            strong
-            ellipsis={{ tooltip: p.name }}
-            style={{ maxWidth: 105 }}
+        <div style={{ display: "grid", gap: 4, width: 168, maxWidth: "100%", minWidth: 0 }}>
+          <span
+            style={{
+              display: "block",
+              fontWeight: 600,
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+              overflow: "visible",
+              textOverflow: "clip",
+            }}
           >
             {p.name}
-          </Text>
+          </span>
           {(p as any).isFifthQuarter ? (
             <Tag color="purple" style={{ width: "fit-content", margin: 0 }}>
               5th Quarter
@@ -960,11 +976,20 @@ export default function ProductsTab({
               onChange={setShowProcessingProducts}
             />
           </Space>
-          <Button onClick={() => setShowArchived((v) => !v)}>
-            {showArchived
-              ? "Show Active"
-              : `Show Archived${archivedCount > 0 ? ` (${archivedCount})` : ""}`}
-          </Button>
+          <Select
+            aria-label="Product visibility"
+            value={productView}
+            style={{ minWidth: 220 }}
+            onChange={(value) => {
+              setProductView(value);
+              setShowProcessingProducts(false);
+            }}
+            options={[
+              { value: "active", label: "All active products" },
+              { value: "hidden", label: `Hidden from shop (${hiddenCount})` },
+              { value: "archived", label: `Archived products (${archivedCount})` },
+            ]}
+          />
           {!showArchived && (
             <>
               <Button onClick={openManufactureModal}>Make Product</Button>
@@ -995,7 +1020,13 @@ export default function ProductsTab({
         <div style={{ display: "grid", gap: 14 }}>
           {grouped.length === 0 ? (
             <Text type="secondary" style={{ padding: 16 }}>
-              {showArchived ? "No archived products." : "No active products."}
+              {search.trim() || showProcessingProducts
+                ? "No products match these filters."
+                : showArchived
+                  ? "No archived products."
+                  : productView === "hidden"
+                    ? "No products hidden from the shop."
+                    : "No active products."}
             </Text>
           ) : (
             grouped.map(([catName, list]) => (

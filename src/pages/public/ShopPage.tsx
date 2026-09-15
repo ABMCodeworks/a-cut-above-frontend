@@ -275,8 +275,8 @@ export default function ShopPage() {
     setLocationPromptOpen(false);
   }
 
-  async function load() {
-    setLoading(true);
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
 
     try {
       const [wRes, pRes, lRes, cRes] = await Promise.all([
@@ -381,7 +381,11 @@ export default function ShopPage() {
   }
 
   useEffect(() => {
-    load();
+    void load();
+    const refresh = () => { if (document.visibilityState === "visible") void load(true); };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, []);
 
   useEffect(() => {
@@ -548,7 +552,7 @@ export default function ShopPage() {
     if (u === "kg") {
       const avgWeightG = summaryAvgWeightG(p);
       return avgWeightG
-        ? `Est. ${fmtGrams(avgWeightG, "g")} pack`
+        ? "Est. price / pack"
         : "Price / kg";
     }
 
@@ -978,6 +982,7 @@ export default function ShopPage() {
                       const summaryProduct = prod ?? row.product;
                       const img = resolveImageUrl(summaryProduct.imageUrl);
                       const unitLabel = summaryUnitLabel(summaryProduct);
+                      const packetWeightLabel = fmtGrams(summaryAvgWeightG(summaryProduct));
                       const unitPrice = summaryUnitPrice(summaryProduct);
                       const estimatedPackPrice =
                         summaryEstimatedPackPrice(summaryProduct);
@@ -1060,6 +1065,12 @@ export default function ShopPage() {
                                 >
                                   {row.product.name}
                                 </div>
+
+                                {packetWeightLabel ? (
+                                  <Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+                                    Average weight per packet: {packetWeightLabel}
+                                  </Text>
+                                ) : null}
 
                                 <div
                                   style={{
@@ -1496,7 +1507,7 @@ export default function ShopPage() {
                               type="secondary"
                               style={{ fontSize: isMobile ? 11 : undefined }}
                             >
-                              Avg weight: <b>{avgWeightLabel}</b>
+                              Average weight per packet: <b>{avgWeightLabel}</b>
                             </Text>
                           </div>
                         ) : null}
@@ -1673,6 +1684,7 @@ export default function ShopPage() {
                   const summaryProduct = prod ?? row.product;
                   const img = resolveImageUrl(summaryProduct.imageUrl);
                   const unitLabel = summaryUnitLabel(summaryProduct);
+                  const packetWeightLabel = fmtGrams(summaryAvgWeightG(summaryProduct));
                   const unitPrice = summaryUnitPrice(summaryProduct);
                   const estimatedPackPrice =
                     summaryEstimatedPackPrice(summaryProduct);
@@ -1754,6 +1766,12 @@ export default function ShopPage() {
                             >
                               {row.product.name}
                             </div>
+
+                            {packetWeightLabel ? (
+                              <Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+                                Average weight per packet: {packetWeightLabel}
+                              </Text>
+                            ) : null}
 
                             <div
                               style={{
