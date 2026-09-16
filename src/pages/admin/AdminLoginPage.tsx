@@ -21,8 +21,8 @@ export default function AdminLoginPage() {
       .catch(() => {});
     (async () => {
       try {
-        await api.get("/api/admin/me");
-        if (active) navigate("/admin/dashboard");
+        const { data } = await api.get("/api/admin/me");
+        if (active && data?.ok === true && data?.user?.id) navigate("/admin/dashboard");
       } catch {
         // An unauthenticated visitor can sign in below.
       } finally {
@@ -40,7 +40,8 @@ export default function AdminLoginPage() {
         email: values.email.trim().toLowerCase(),
         password: values.password,
       });
-      await api.get("/api/admin/me");
+      const { data } = await api.get("/api/admin/me");
+      if (data?.ok !== true || !data?.user?.id) throw new Error("Session was not confirmed");
       message.success("Logged in");
       navigate("/admin/dashboard");
     } catch (e: any) {

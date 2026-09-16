@@ -8,6 +8,7 @@ import { api } from "./api/client";
 
 import TopBar from "./components/TopBar";
 import Seo from "./components/Seo";
+import RequireAdmin from "./components/RequireAdmin";
 
 import ShopPage from "./pages/public/ShopPage";
 import AboutPage from "./pages/public/AboutPage";
@@ -42,8 +43,8 @@ export default function App() {
     setCheckingAdminAuth(true);
 
     try {
-      await api.get("/api/admin/me");
-      setAdminAuthed(true);
+      const { data } = await api.get("/api/admin/me");
+      setAdminAuthed(data?.ok === true && Boolean(data?.user?.id));
     } catch {
       setAdminAuthed(false);
     } finally {
@@ -129,8 +130,7 @@ export default function App() {
             <Route path="/admin/setup" element={<AdminSetupPage initial />} />
             <Route path="/admin/register" element={<AdminSetupPage />} />
             <Route path="/admin/dashboard" element={
-              checkingAdminAuth ? <Spin aria-label="Checking staff access" /> :
-              adminAuthed ? <AdminDashboardPage /> : <AdminLoginPage />
+              <RequireAdmin><AdminDashboardPage /></RequireAdmin>
             } />
             <Route path="*" element={
               <section className="aca-page">
