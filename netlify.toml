@@ -25,8 +25,33 @@
   status = 200
   force = true
 
-# ✅ SPA fallback MUST be last
+# Consolidate duplicate shop and tracking addresses.
+[[redirects]]
+  from = "/products"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/shop"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/track-order"
+  to = "/track"
+  status = 301
+  force = true
+
+# Every known route has its own generated HTML; unknown admin routes stay noindex.
+[[redirects]]
+  from = "/admin/*"
+  to = "/admin.html"
+  status = 200
+
+# Unknown URLs must return a real 404, rather than an indexable empty SPA shell.
 [[redirects]]
   from = "/*"
-  to = "/index.html"
-  status = 200
+  to = "/404.html"
+  status = 404

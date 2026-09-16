@@ -216,6 +216,8 @@ export default function AboutPage() {
                         <img
                           src={image.src}
                           alt={image.alt}
+                          loading="lazy"
+                          decoding="async"
                           onError={() => {
                             setHiddenImages((prev) => ({
                               ...prev,

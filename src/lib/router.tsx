@@ -7,6 +7,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { normalizePath } from "./seo";
 
 type LocationValue = {
   pathname: string;
@@ -29,7 +30,7 @@ const RouterContext = createContext<{
 
 function readLocation(): LocationValue {
   return {
-    pathname: window.location.pathname,
+    pathname: normalizePath(window.location.pathname),
     search: window.location.search,
     hash: window.location.hash,
     state: window.history.state,
@@ -148,6 +149,7 @@ export function Routes({ children }: { children: React.ReactNode }) {
   const routes = React.Children.toArray(children).filter(isValidElement) as Array<
     React.ReactElement<{ path: string; element: React.ReactNode }>
   >;
-  const match = routes.find((route) => route.props.path === pathname);
+  const match = routes.find((route) => route.props.path === pathname)
+    ?? routes.find((route) => route.props.path === "*");
   return <>{match?.props.element ?? null}</>;
 }

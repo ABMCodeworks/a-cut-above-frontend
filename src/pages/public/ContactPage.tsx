@@ -81,7 +81,7 @@ export default function ContactPage() {
     <div className="aca-page">
       <div className="aca-page__top">
         <Title
-          level={2}
+          level={1}
           className="aca-displayTitle"
           style={{ marginBottom: 4 }}
         >

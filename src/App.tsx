@@ -1,13 +1,13 @@
 // src/App.tsx
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "./lib/router";
-import { Button, Layout, Space, message } from "antd";
+import { Button, Layout, Space, Spin, message } from "antd";
 import { CartProvider } from "./context/CartContext";
 import { api } from "./api/client";
 
 import TopBar from "./components/TopBar";
-import AdminTopBar from "./components/AdminTopBar";
+import Seo from "./components/Seo";
 
 import ShopPage from "./pages/public/ShopPage";
 import AboutPage from "./pages/public/AboutPage";
@@ -23,25 +23,20 @@ import {
 } from "./pages/public/LegalPages";
 import PrivacyPreferencesBanner from "./components/PrivacyPreferencesBanner";
 
-import AdminSetupPage from "./pages/admin/AdminSetupPage";
-import AdminLoginPage from "./pages/admin/AdminLoginPage";
-import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+const AdminTopBar = lazy(() => import("./components/AdminTopBar"));
+const AdminSetupPage = lazy(() => import("./pages/admin/AdminSetupPage"));
+const AdminLoginPage = lazy(() => import("./pages/admin/AdminLoginPage"));
+const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage"));
 
 const { Content, Footer } = Layout;
 
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isAdminRoute = location.pathname.startsWith("/admin");
-
-  useEffect(() => {
-    document.title = isAdminRoute
-      ? "A Cut Above Meats Admin"
-      : "A Cut Above Meats Shop";
-  }, [isAdminRoute]);
+  const isAdminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
 
   const [adminAuthed, setAdminAuthed] = useState(false);
-  const [checkingAdminAuth, setCheckingAdminAuth] = useState(false);
+  const [checkingAdminAuth, setCheckingAdminAuth] = useState(true);
 
   const checkAdminAuth = useCallback(async () => {
     setCheckingAdminAuth(true);
@@ -86,7 +81,9 @@ export default function App() {
 
   return (
     <CartProvider>
+      <Seo />
       <Layout style={{ minHeight: "100vh" }}>
+        <Suspense fallback={<Spin aria-label="Loading staff navigation" />}>
         {isAdminRoute ? (
           <AdminTopBar
             onRefresh={refreshAdmin}
@@ -98,6 +95,7 @@ export default function App() {
         ) : (
           <TopBar />
         )}
+        </Suspense>
 
         <Content
           style={{
@@ -107,6 +105,7 @@ export default function App() {
             width: "100%",
           }}
         >
+          <Suspense fallback={<Spin aria-label="Loading page" />}>
           <Routes>
             <Route path="/" element={<ShopPage />} />
             <Route path="/about" element={<AboutPage />} />
@@ -129,8 +128,18 @@ export default function App() {
             <Route path="/admin" element={<AdminLoginPage />} />
             <Route path="/admin/setup" element={<AdminSetupPage initial />} />
             <Route path="/admin/register" element={<AdminSetupPage />} />
-            <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/admin/dashboard" element={
+              checkingAdminAuth ? <Spin aria-label="Checking staff access" /> :
+              adminAuthed ? <AdminDashboardPage /> : <AdminLoginPage />
+            } />
+            <Route path="*" element={
+              <section className="aca-page">
+                <h1>Page not found</h1>
+                <p>This page is unavailable. <Link to="/">Return to the shop</Link> or <Link to="/contact">contact us</Link>.</p>
+              </section>
+            } />
           </Routes>
+          </Suspense>
         </Content>
 
         <Footer style={{ textAlign: "center" }}>

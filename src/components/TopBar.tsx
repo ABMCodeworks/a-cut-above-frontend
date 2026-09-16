@@ -26,7 +26,7 @@ import { useCart } from "../context/CartContext";
 import { canStorePreferences } from "../utils/privacyPreferences";
 
 // ✅ Put your logo file here (adjust path as needed)
-import logo from "../assets/logo.png";
+import logo from "../assets/logo.webp";
 
 const { Header } = Layout;
 const { useBreakpoint } = Grid;
@@ -74,7 +74,7 @@ export default function TopBar() {
       },
       {
         key: "/products",
-        label: <Link to="/products">Shop</Link>,
+        label: <Link to="/">Shop</Link>,
         icon: <ShopOutlined />,
       },
       {
@@ -144,20 +144,18 @@ export default function TopBar() {
     <Header className="aca-header">
       <div className="aca-header__inner">
         {/* Brand */}
-        <div
+        <Link
+          to="/"
           className="aca-brand"
-          onClick={() => navigate("/")}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && navigate("/")}
-          style={{ cursor: "pointer" }}
+          aria-label="A Cut Above Meats home"
+          style={{ cursor: "pointer", color: "inherit", textDecoration: "none" }}
         >
           <img src={logo} alt="A Cut Above" className="aca-brand__logo" />
 
           <div className="aca-brand__text">
             <div className="aca-brand__title">A CUT ABOVE</div>
           </div>
-        </div>
+        </Link>
 
         {/* Right actions */}
         <div className="aca-header__right">

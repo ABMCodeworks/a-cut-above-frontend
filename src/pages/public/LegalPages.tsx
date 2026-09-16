@@ -36,7 +36,7 @@ function LegalPage({
     <div className="aca-page" style={{ maxWidth: 900, margin: "0 auto" }}>
       <div className="aca-page__top">
         <div>
-          <Title level={2} className="aca-displayTitle" style={{ marginBottom: 4 }}>
+          <Title level={1} className="aca-displayTitle" style={{ marginBottom: 4 }}>
             {title}
           </Title>
           <Text className="aca-subtitle">{intro}</Text>

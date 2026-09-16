@@ -688,7 +688,7 @@ export default function ShopPage() {
         }}
       >
         <Title
-          level={2}
+          level={1}
           className="aca-displayTitle"
           style={{ marginBottom: 4 }}
         >
@@ -698,7 +698,7 @@ export default function ShopPage() {
         <Text className="aca-subtitle">
           {isWholesale
             ? "Business pricing for approved wholesale partners."
-            : "Grass-fed, ethical and slow-raised meat."}
+            : "Shop grass-fed, ethical and slow-raised meat from A Cut Above, Zimbabwe."}
         </Text>
       </div>
 
