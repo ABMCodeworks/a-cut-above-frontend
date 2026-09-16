@@ -1,5 +1,18 @@
 # netlify.toml
 
+# Send the default Netlify domain to the primary domain before other rules.
+[[redirects]]
+  from = "https://acutabovetest.netlify.app/*"
+  to = "https://acutabovemeats.co.zw/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://acutabovetest.netlify.app/*"
+  to = "https://acutabovemeats.co.zw/:splat"
+  status = 301
+  force = true
+
 [[redirects]]
   from = "/api/*"
   to = "https://a-cut-above-backend-production.up.railway.app/api/:splat"
