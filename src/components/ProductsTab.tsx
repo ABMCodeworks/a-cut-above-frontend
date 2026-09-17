@@ -26,6 +26,7 @@ import type {
   AdminProduct,
 } from "../pages/admin/AdminDashboardPage";
 import { IconPreview } from "./iconCatalog";
+import { ingredientWeightAvailable, isWeightUnit } from "../utils/productQuantity";
 
 const { Text } = Typography;
 
@@ -68,6 +69,7 @@ type ManufactureProductForm = {
   ingredients: Array<{
     productId: string;
     quantity: number;
+    packetsUsed?: number;
   }>;
 };
 
@@ -319,7 +321,13 @@ export default function ProductsTab({
     try {
       const values = await manufactureForm.validateFields();
       setManufacturing(true);
-      const response = await api.post("/api/admin/products/manufacture", values);
+      const response = await api.post("/api/admin/products/manufacture", {
+        ...values,
+        ingredients: values.ingredients.map((ingredient) => ({
+          ...ingredient,
+          quantityBasis: isWeightUnit(products.find((product) => product.id === ingredient.productId)?.unit) ? "WEIGHT" : "UNITS",
+        })),
+      });
       const productName =
         response.data?.manufacturingBatch?.outputProduct?.name || "Product";
       message.success(
@@ -875,7 +883,7 @@ export default function ProductsTab({
         p.isForProcessing ? (
           <div style={{ display: "grid", gap: 2 }}>
             <Text>{p.stockQty} packs</Text>
-            <Text>{Number(p.processingStockWeightKg || 0).toFixed(2)} kg</Text>
+            <Text>{Number(Number(p.processingStockWeightKg || 0).toFixed(6))} kg</Text>
             <Text type="secondary">processing stock</Text>
           </div>
         ) : p.stockQty,
@@ -1260,6 +1268,8 @@ export default function ProductsTab({
           >
             <InputNumber
               min={0}
+              step={1}
+              precision={0}
               style={{ width: "100%" }}
             />
           </Form.Item>
@@ -1271,7 +1281,7 @@ export default function ProductsTab({
               rules={[{ required: true }]}
               extra="The exact combined weight of all processing packs currently on hand."
             >
-              <InputNumber min={0} step={0.01} precision={2} style={{ width: "100%" }} />
+              <InputNumber min={0} step={0.001} precision={6} style={{ width: "100%" }} />
             </Form.Item>
           ) : null}
 
@@ -1348,8 +1358,9 @@ export default function ProductsTab({
 
           <Divider>Products used</Divider>
           <Text type="secondary">
-            Only products whose unit is not “pack” can be used. The quantities
-            below are removed from their stock when the finished packets are added.
+            Enter measured ingredient weights in kg or g, and record packets used
+            separately. Processing ingredients use their recorded total weight;
+            packet counts are never treated as kilograms. Products sold by pack cannot be ingredients.
           </Text>
 
           <Form.List name="ingredients">
@@ -1364,6 +1375,8 @@ export default function ProductsTab({
                   const selectedProduct = products.find(
                     (product) => product.id === currentProductId,
                   );
+                  const byWeight = isWeightUnit(selectedProduct?.unit);
+                  const availableWeight = selectedProduct ? ingredientWeightAvailable(selectedProduct) : undefined;
                   const selectedElsewhere = new Set(
                     manufactureIngredients
                       .map((ingredient: any, index: number) =>
@@ -1393,6 +1406,10 @@ export default function ProductsTab({
                             showSearch
                             optionFilterProp="label"
                             placeholder="Select stock to use"
+                            onChange={() => {
+                              manufactureForm.setFieldValue(["ingredients", field.name, "quantity"], undefined);
+                              manufactureForm.setFieldValue(["ingredients", field.name, "packetsUsed"], undefined);
+                            }}
                             options={products
                               .filter(
                                 (product) =>
@@ -1402,26 +1419,46 @@ export default function ProductsTab({
                               )
                               .map((product) => ({
                                 value: product.id,
-                                label: `${product.name} (${product.unit}) — ${product.stockQty} available${product.avgWeightG ? ` — avg ${fmtGrams(Number(product.avgWeightG), product.unit)}` : ""}`,
+                                label: `${product.name} — ${ingredientWeightAvailable(product) !== undefined ? `${ingredientWeightAvailable(product)} ${product.unit} available · ` : ""}${product.stockQty} packets`,
                                 disabled: selectedElsewhere.has(product.id),
                               }))}
                           />
                         </Form.Item>
+                        <div>
                         <Form.Item
                           {...field}
                           name={[field.name, "quantity"]}
-                          label={`Units used${selectedProduct ? ` (${selectedProduct.unit})` : ""}`}
-                          rules={[{ required: true, message: "Enter units used" }]}
-                          style={{ marginBottom: 0 }}
+                          label={`${byWeight ? "Weight" : "Units"} used${selectedProduct ? ` (${selectedProduct.unit})` : ""}`}
+                          rules={[
+                            { required: true, message: byWeight ? "Enter the weight used" : "Enter units used" },
+                            { type: "number", min: byWeight ? 0.001 : 1, max: byWeight ? availableWeight : selectedProduct?.stockQty },
+                          ]}
+                          extra={byWeight && availableWeight === undefined ? "Enter the measured weight of the packets used." : undefined}
+                          style={{ marginBottom: byWeight ? 12 : 0 }}
                         >
                           <InputNumber
-                            min={1}
-                            max={selectedProduct?.stockQty}
-                            step={1}
-                            precision={0}
+                            min={byWeight ? 0.001 : 1}
+                            max={byWeight ? availableWeight : selectedProduct?.stockQty}
+                            step={byWeight ? 0.1 : 1}
+                            precision={byWeight ? 3 : 0}
                             style={{ width: "100%" }}
                           />
                         </Form.Item>
+                        {byWeight ? (
+                          <Form.Item
+                            name={[field.name, "packetsUsed"]}
+                            label="Packets used"
+                            rules={[
+                              { required: true, message: "Enter packets used" },
+                              { type: "integer", min: selectedProduct?.isForProcessing ? 0 : 1, max: selectedProduct?.stockQty },
+                            ]}
+                            extra={selectedProduct?.isForProcessing ? "Count fully used packets. Use 0 if taking part of a packet." : "Number of packets removed from stock."}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <InputNumber min={selectedProduct?.isForProcessing ? 0 : 1} max={selectedProduct?.stockQty} step={1} precision={0} style={{ width: "100%" }} />
+                          </Form.Item>
+                        ) : null}
+                        </div>
                         <Button
                           danger
                           disabled={fields.length === 1}
