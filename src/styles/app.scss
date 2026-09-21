@@ -1136,3 +1136,20 @@ body {
     position: static;
   }
 }
+
+// Keep focusable controls at iOS's readable size, including navigation selects.
+@media (max-width: 991px) and (pointer: coarse) {
+  input, textarea, select,
+  .ant-input, .ant-input-number-input,
+  .ant-select, .ant-select-input, .ant-select-selection-search-input,
+  .ant-select-content-input, .ant-picker input,
+  .ant-pagination-options input {
+    font-size: 16px !important;
+  }
+}
+
+@media (pointer: coarse) {
+  a, button, [role="menuitem"], .ant-pagination-item {
+    touch-action: manipulation;
+  }
+}

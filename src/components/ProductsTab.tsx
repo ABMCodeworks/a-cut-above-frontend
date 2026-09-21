@@ -25,6 +25,7 @@ import type {
   AdminCategory,
   AdminProduct,
 } from "../pages/admin/AdminDashboardPage";
+import { stockListHtml } from "../utils/stockList";
 import { IconPreview } from "./iconCatalog";
 import { ingredientWeightAvailable, isWeightUnit } from "../utils/productQuantity";
 
@@ -940,6 +941,25 @@ export default function ProductsTab({
     },
   ] as any[];
 
+  async function printStockList() {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) { message.error("Allow pop-ups to print the stock list"); return; }
+    printWindow.document.body.textContent = "Loading complete stock list…";
+    try {
+      const { data } = await api.get("/api/admin/products");
+      if (printWindow.closed) return;
+      printWindow.document.open();
+      printWindow.document.write(stockListHtml(data.products));
+      printWindow.document.close();
+      printWindow.document.getElementById("print")?.addEventListener("click", () => printWindow.print());
+      printWindow.focus();
+      printWindow.print();
+    } catch (error: any) {
+      printWindow.close();
+      message.error(error?.response?.data?.error || "Could not load the stock list");
+    }
+  }
+
   const modalUploadProps: UploadProps = {
     showUploadList: false,
     beforeUpload: (file) => {
@@ -965,6 +985,7 @@ export default function ProductsTab({
     <Card
       extra={
         <Space wrap>
+          <Button onClick={printStockList}>Print All Stock</Button>
           <Input
             allowClear
             value={search}
@@ -1145,6 +1166,7 @@ export default function ProductsTab({
           <Form.Item
             name="isFifthQuarter"
             label="5th quarter product"
+            extra="Makes this product available for fifth-quarter recording. This does not hide it from products, processing or the shop."
             valuePropName="checked"
           >
             <Switch />
@@ -1279,7 +1301,7 @@ export default function ProductsTab({
               name="processingStockWeightKg"
               label="Total processing stock weight (kg)"
               rules={[{ required: true }]}
-              extra="The exact combined weight of all processing packs currently on hand."
+              extra="The exact combined weight of all processing packs currently on hand. When converting a product, enter the current weight here; historical production stays recorded separately."
             >
               <InputNumber min={0} step={0.001} precision={6} style={{ width: "100%" }} />
             </Form.Item>
