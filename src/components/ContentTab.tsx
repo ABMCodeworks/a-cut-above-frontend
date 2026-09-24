@@ -576,32 +576,10 @@ export default function ContentTab({
           </Col>
         </Row>
 
-        <Card title="Checkout success acknowledgement">
-          <Paragraph type="secondary">
-            This appears after an order is placed, on the successful checkout
-            confirmation.
-          </Paragraph>
-          <Row gutter={[18, 0]}>
-            <Col xs={24} lg={8}>
-              <Form.Item
-                name="acknowledgementTitle"
-                label="Acknowledgement title"
-                rules={[{ required: true }]}
-              >
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} lg={16}>
-              <Form.Item
-                name="acknowledgementText"
-                label="Acknowledgement text"
-                rules={[{ required: true }]}
-              >
-                <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
+
+        {/* Preserve legacy About content fields when saving the page. */}
+        <Form.Item name="acknowledgementTitle" hidden><Input /></Form.Item>
+        <Form.Item name="acknowledgementText" hidden><Input /></Form.Item>
       </Form>
     </Card>
   );

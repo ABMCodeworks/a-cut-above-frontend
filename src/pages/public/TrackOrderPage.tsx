@@ -33,8 +33,8 @@ type CheckoutAcknowledgement = {
 };
 
 const DEFAULT_CHECKOUT_ACKNOWLEDGEMENT: CheckoutAcknowledgement = {
-  title: "Acknowledgement",
-  text: "Thank you for your order. We will confirm your final total once your order has been packed.",
+  title: "Order Acknowledgement",
+  text: "Thank you for your order!\n\nWe will send you a delivery note with your total amount and any other details 24 hours before delivery.\n\nIf you have any questions, please get in touch with us on +263 782 206 618.",
 };
 
 function normalizeStatus(status: any) {
@@ -100,16 +100,16 @@ export default function TrackOrderPage() {
     let alive = true;
 
     api
-      .get("/api/public/site-content/about")
+      .get("/api/public/site-content/order-acknowledgement")
       .then((res) => {
         if (!alive) return;
         const content = res.data?.content;
         setCheckoutAcknowledgement({
           title:
-            String(content?.acknowledgementTitle || "").trim() ||
+            String(content?.title || "").trim() ||
             DEFAULT_CHECKOUT_ACKNOWLEDGEMENT.title,
           text:
-            String(content?.acknowledgementText || "").trim() ||
+            String(content?.text || "").trim() ||
             DEFAULT_CHECKOUT_ACKNOWLEDGEMENT.text,
         });
       })
@@ -196,7 +196,7 @@ export default function TrackOrderPage() {
                 }}
               >
                 <Text strong>{checkoutAcknowledgement.title}</Text>
-                <Text>{checkoutAcknowledgement.text}</Text>
+                <Text style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{checkoutAcknowledgement.text}</Text>
               </div>
             </div>
           }

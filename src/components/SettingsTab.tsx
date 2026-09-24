@@ -1,3 +1,4 @@
+import OrderAcknowledgementSettings from "./OrderAcknowledgementSettings";
 import React, { useEffect, useState } from "react";
 import { Alert, Anchor, Button, Card, Col, Form, Input, Row, Skeleton, Typography, message } from "antd";
 import { api } from "../api/client";
@@ -18,7 +19,7 @@ export default function SettingsTab({ loading, windows, onReload, permissions, u
   const canViewPrivacy = can("privacy.view");
   const canManage = can("windows.manage");
   const sections = [
-    ...(canViewWindows ? [{ key: "delivery-note", href: "#settings-delivery-note", title: "Delivery-note details" }, { key: "windows", href: "#settings-windows", title: "Ordering windows" }] : []),
+    ...(canViewWindows ? [{ key: "order-acknowledgement", href: "#settings-order-acknowledgement", title: "Order acknowledgement" }, { key: "delivery-note", href: "#settings-delivery-note", title: "Delivery-note details" }, { key: "windows", href: "#settings-windows", title: "Ordering windows" }] : []),
     ...(canViewUsers ? [{ key: "users", href: "#settings-users", title: "Users" }] : []),
     ...(canViewPrivacy ? [{ key: "privacy", href: "#settings-privacy", title: "Privacy requests" }] : []),
   ];
@@ -73,6 +74,7 @@ export default function SettingsTab({ loading, windows, onReload, permissions, u
       </Card>
     </nav>
     <div className="aca-settings__sections">
+    {canViewWindows && <section id="settings-order-acknowledgement" aria-label="Order acknowledgement"><OrderAcknowledgementSettings canManage={canManage} /></section>}
     {canViewWindows && <section id="settings-delivery-note" aria-label="Delivery-note details">
     <Card title="Delivery-note details">
       <Typography.Paragraph type="secondary">Set the business details printed on individual and bulk delivery notes. Saved changes apply whenever a delivery note is downloaded, including existing orders.</Typography.Paragraph>
