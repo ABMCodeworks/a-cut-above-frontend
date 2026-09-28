@@ -1,0 +1,22 @@
+.pos-workspace { max-width: 1440px; margin: 0 auto; }
+.pos-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
+.pos-heading .ant-tag { margin-top: 5px; }
+.pos-products, .pos-summary { border-radius: 16px; }
+.pos-line { background: #fafbf9; border-radius: 12px; }
+.pos-line .ant-card-head-title { white-space: normal; }
+.pos-line label { font-size: 13px; font-weight: 500; }
+.pos-line .ant-input-number { min-height: 40px; display: flex; align-items: center; }
+.pos-line-total, .pos-summary-line { display: flex; justify-content: space-between; gap: 16px; padding: 14px 0; }
+.pos-line-total { padding-bottom: 0; }
+.pos-line-total .ant-typography:last-child { font-size: 18px; white-space: nowrap; }
+.pos-line-hint { color: #ad6800; margin-top: 8px; font-size: 13px; }
+.pos-summary { position: sticky; top: 24px; }
+.pos-summary-line { border-bottom: 1px solid #edf0e9; }
+.pos-summary-line .ant-typography:last-child { white-space: nowrap; }
+.pos-grand-total { display: flex; flex-direction: column; gap: 4px; padding: 22px; margin: 20px 0 12px; background: #f1f5ed; border-radius: 12px; }
+.pos-grand-total strong { font-size: 36px; letter-spacing: -1px; color: #30452d; overflow-wrap: anywhere; }
+.pos-summary .ant-collapse { margin-bottom: 16px; }
+@media (max-width: 575px) {
+  .pos-heading { flex-direction: column; gap: 0; }
+  .pos-products > .ant-card-body, .pos-summary > .ant-card-body { padding: 16px; }
+}
