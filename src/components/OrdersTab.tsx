@@ -522,6 +522,7 @@ function OrderTable({
               >
                 {value || "—"}
               </span>
+              {row.posRequestId && <Tag color="purple">Point of Sale</Tag>}
               <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.25 }}>
                 {new Date(row.createdAt).toLocaleDateString()}
               </Text>
@@ -689,6 +690,7 @@ function OrderTable({
                 <Tooltip title="Delete order">
                   <Button
                     aria-label="Delete order"
+                    disabled={!!row.posRequestId}
                     danger
                     size="small"
                     icon={<DeleteOutlined />}

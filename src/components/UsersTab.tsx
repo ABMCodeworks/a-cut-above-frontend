@@ -65,6 +65,7 @@ const PERMISSION_GROUPS: {
         { label: "Export packing lists", value: "packinglists.export" },
       ],
     },
+    { title: "Point of Sale", items: [{ label: "Record point-of-sale transactions", value: "pos.manage" }] },
     {
       title: "Products",
       items: [

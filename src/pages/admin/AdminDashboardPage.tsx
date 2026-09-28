@@ -1,3 +1,4 @@
+import PointOfSaleTab from "../../components/PointOfSaleTab";
 // src/pages/admin/AdminDashboardPage.tsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Tabs, message } from "antd";
@@ -118,6 +119,7 @@ export type AdminOrderItem = {
 export type AdminOrder = {
   id: string;
   orderNo: string;
+  posRequestId?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail?: string | null;
@@ -160,6 +162,7 @@ export type AdminWindow = {
 export type AdminPermission =
   | "admin.full"
   | "dashboard.view"
+  | "pos.manage"
   | "orders.view"
   | "orders.status.update"
   | "orders.weights.update"
@@ -325,6 +328,7 @@ export default function AdminDashboardPage() {
   }, [isAuthed, logout]);
 
   const canViewDashboard = hasPermission(myPermissions, "dashboard.view");
+  const canUsePos = hasPermission(myPermissions, "pos.manage");
   const canViewOrders = hasPermission(myPermissions, "orders.view");
   const canViewCategories = hasPermission(myPermissions, "categories.view");
   const canViewProducts = hasPermission(myPermissions, "products.view");
@@ -342,6 +346,8 @@ export default function AdminDashboardPage() {
 
   const defaultTabKey = canViewDashboard
     ? "dashboard"
+    : canUsePos
+      ? "pos"
     : canViewOrders
       ? "orders"
       : canViewProducts
@@ -401,6 +407,8 @@ export default function AdminDashboardPage() {
             ]
             : []),
 
+          ...(canUsePos ? [{ key: "pos", label: "Point of Sale", children: <PointOfSaleTab onCompleted={loadAll} /> }] : []),
+
           ...(canViewOrders
             ? [
               {
@@ -425,7 +433,7 @@ export default function AdminDashboardPage() {
                 key: "dropoffs",
                 label: "Ordering Schedules",
                 children: (
-                  <DropoffLocationsTab loading={loading} onReload={loadAll} />
+                  <DropoffLocationsTab loading={loading} onReload={loadAll} canManage={hasPermission(myPermissions, "dropoffs.manage")} />
                 ),
               },
             ]

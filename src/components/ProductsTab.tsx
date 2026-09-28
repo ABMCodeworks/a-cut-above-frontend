@@ -528,6 +528,9 @@ export default function ProductsTab({
           ...payload,
           stockQty: values.stockQty === editingProduct.stockQty ? undefined : values.stockQty,
           expectedStockQty: editingProduct.stockQty,
+          processingStockWeightKg: payload.processingStockWeightKg === Number(editingProduct.processingStockWeightKg || 0)
+            ? undefined : payload.processingStockWeightKg,
+          expectedProcessingStockWeightKg: Number(editingProduct.processingStockWeightKg || 0),
         });
         if (pendingImageFile) {
           await uploadImage(editingProduct.id, pendingImageFile);

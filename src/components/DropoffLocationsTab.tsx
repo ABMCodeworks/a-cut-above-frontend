@@ -70,15 +70,51 @@ function fmtDate(dt?: string | null) {
 function ScheduleList({
   location,
   onChanged,
+  canManage,
 }: {
   location: DeliveryLocation;
   onChanged: () => void;
+  canManage: boolean;
 }) {
   const [schedules, setSchedules] = useState<DeliverySchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addForm] = Form.useForm<ScheduleFormValues>();
   const [saving, setSaving] = useState(false);
+  const [extending, setExtending] = useState<DeliverySchedule | null>(null);
+  const [extendForm] = Form.useForm<ScheduleFormValues>();
+  const [extendingSaving, setExtendingSaving] = useState(false);
+
+  function openExtend(schedule: DeliverySchedule) {
+    extendForm.resetFields();
+    extendForm.setFieldsValue({ cutoffDate: dayjs(schedule.cutoffDate), deliveryDate: dayjs(schedule.deliveryDate) });
+    setExtending(schedule);
+  }
+
+  async function extendSchedule() {
+    const values = await extendForm.validateFields();
+    if (!extending || extendingSaving) return;
+    setExtendingSaving(true);
+    try {
+      await api.patch(`/api/admin/delivery-schedules/${extending.id}/extend`, {
+        cutoffDate: values.cutoffDate.toISOString(),
+        deliveryDate: values.deliveryDate.toISOString(),
+        expectedCutoffDate: extending.cutoffDate,
+        expectedDeliveryDate: extending.deliveryDate,
+      });
+      message.success("Ordering schedule extended");
+      setExtending(null);
+      await loadSchedules();
+      onChanged();
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || "Failed to extend schedule");
+      if (e?.response?.status === 409 || e?.response?.status === 404) {
+        setExtending(null);
+        await loadSchedules();
+      }
+    } finally { setExtendingSaving(false); }
+  }
+
 
   async function loadSchedules() {
     setLoadingSchedules(true);
@@ -151,8 +187,10 @@ function ScheduleList({
     {
       title: "",
       key: "actions",
-      width: 80,
+      width: 150,
       render: (_: any, r: DeliverySchedule) => (
+        <Space wrap>
+        <Button size="small" disabled={!canManage} onClick={() => openExtend(r)}>Extend</Button>
         <Popconfirm
           title="Delete this schedule?"
           description={
@@ -168,6 +206,7 @@ function ScheduleList({
             Delete
           </Button>
         </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -190,6 +229,48 @@ function ScheduleList({
           ),
         }}
       />
+
+      <Modal
+        title={`Extend ordering — ${location.name}`}
+        open={!!extending}
+        onCancel={() => { if (!extendingSaving) setExtending(null); }}
+        onOk={extendSchedule}
+        okText="Extend schedule"
+        confirmLoading={extendingSaving}
+        cancelButtonProps={{ disabled: extendingSaving }}
+        closable={!extendingSaving}
+        maskClosable={!extendingSaving}
+      >
+        <Typography.Paragraph>
+          Current cut-off: <strong>{fmtDate(extending?.cutoffDate)}</strong>.
+          Choose a later cut-off to keep accepting orders. Existing orders stay on this schedule.
+        </Typography.Paragraph>
+        <Form form={extendForm} layout="vertical" disabled={extendingSaving}>
+          <Form.Item name="cutoffDate" label="New ordering cut-off" rules={[
+            { required: true, message: "Select the new cut-off" },
+            { validator: async (_, value) => {
+              if (value && (!value.isAfter(dayjs()) || !value.isAfter(dayjs(extending?.cutoffDate)))) {
+                throw new Error("Choose a future time later than the current cut-off");
+              }
+            } },
+          ]}>
+            <DatePicker showTime={{ format: "HH:mm" }} format="ddd, D MMM YYYY, HH:mm" style={{ width: "100%" }} disabledDate={date => date.isBefore(dayjs(), "day")} />
+          </Form.Item>
+          <Form.Item name="deliveryDate" label="Delivery date" dependencies={["cutoffDate"]}
+            extra="Keep the delivery date or move it later. Changes apply to every order on this schedule."
+            rules={[
+              { required: true, message: "Select the delivery date" },
+              { validator: async (_, value) => {
+                const cutoff = extendForm.getFieldValue("cutoffDate");
+                if (value && ((cutoff && value.isBefore(cutoff)) || value.isBefore(dayjs(extending?.deliveryDate)))) {
+                  throw new Error("Delivery must be on or after the new cut-off and cannot move earlier");
+                }
+              } },
+            ]}>
+            <DatePicker showTime={{ format: "HH:mm" }} format="ddd, D MMM YYYY, HH:mm" style={{ width: "100%" }} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {!addOpen ? (
         <Button
@@ -300,9 +381,11 @@ function ScheduleList({
 export default function DeliveryLocationsTab({
   loading,
   onReload,
+  canManage,
 }: {
   loading: boolean;
   onReload: () => void;
+  canManage: boolean;
 }) {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
@@ -656,7 +739,7 @@ export default function DeliveryLocationsTab({
                     </Text>
                   )}
                 </div>
-                <ScheduleList location={r} onChanged={reloadAll} />
+                <ScheduleList location={r} onChanged={reloadAll} canManage={canManage} />
               </div>
             ))
           )}
@@ -756,6 +839,7 @@ export default function DeliveryLocationsTab({
           <ScheduleList
             location={schedulesModalLocation}
             onChanged={reloadAll}
+            canManage={canManage}
           />
         )}
       </Modal>
