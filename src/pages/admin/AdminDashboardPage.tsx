@@ -373,6 +373,41 @@ export default function AdminDashboardPage() {
     ? "windows"
     : requestedTabKey;
 
+  // PDFs read the current database state. Keep the Orders view current too,
+  // including changes made by another packer or in another browser tab.
+  useEffect(() => {
+    if (!isAuthed || !canViewOrders || activeTabKey !== "orders" || loading) return;
+
+    const controller = new AbortController();
+    let inFlight = false;
+    const refreshOrders = async () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      try {
+        const res = await api.get("/api/admin/orders", {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) setOrders(res.data.orders || []);
+      } catch {
+        // Preserve the last successful view during a temporary connection loss.
+        // Manual Refresh still reports errors through loadAll.
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void refreshOrders();
+    window.addEventListener("focus", refreshOrders);
+    document.addEventListener("visibilitychange", refreshOrders);
+    const interval = window.setInterval(refreshOrders, 30_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOrders);
+      document.removeEventListener("visibilitychange", refreshOrders);
+    };
+  }, [isAuthed, canViewOrders, activeTabKey, loading]);
+
   const handleTabChange = useCallback(
     (key: string) => {
       const next = new URLSearchParams(searchParams);
