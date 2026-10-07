@@ -103,6 +103,7 @@ type AdminCreateProduct = {
 };
 
 type CreateOrderItem = {
+  productDiscountPercent?: number;
   productId: string;
   qty: number;
 };
@@ -966,6 +967,7 @@ export default function OrdersTab({
   const [createDeliveryScheduleId, setCreateDeliveryScheduleId] = useState("");
   const [createNotes, setCreateNotes] = useState("");
   const [createWhatsAppConsent, setCreateWhatsAppConsent] = useState(false);
+  const [createOrderDiscountPercent, setCreateOrderDiscountPercent] = useState(0);
   const [createItems, setCreateItems] = useState<CreateOrderItem[]>([
     { productId: "", qty: 1 },
   ]);
@@ -1276,6 +1278,7 @@ export default function OrdersTab({
 
   function openOrderEditor(order: AdminOrder | null) {
     setEditingOrder(order);
+    setCreateOrderDiscountPercent(Number((order as any)?.orderDiscountPercent || 0));
     setCreateCustomerName(order?.customerName || "");
     setCreateCustomerPhone(order?.customerPhone || "");
     setCreateCustomerEmail(order?.customerEmail || "");
@@ -1298,6 +1301,7 @@ export default function OrdersTab({
     setCreateItems(
       order?.items?.length
         ? order.items.map((item) => ({
+            productDiscountPercent: Number((item as any).productDiscountPercent || 0),
             productId: String(item.productId || ""),
             qty: Math.max(1, Number(item.qty || 1)),
           }))
@@ -1752,6 +1756,7 @@ export default function OrdersTab({
       .map((x) => ({
         productId: x.productId,
         qty: Number(x.qty || 1),
+        productDiscountPercent: x.productDiscountPercent ?? 0,
       }));
 
     if (!createCustomerName.trim()) {
@@ -1769,6 +1774,14 @@ export default function OrdersTab({
       return;
     }
 
+    if (new Set(validItems.map(item => item.productId)).size !== validItems.length) {
+      message.error("Add each product only once and adjust its quantity");
+      return;
+    }
+    if ([createOrderDiscountPercent, ...validItems.map(item => item.productDiscountPercent)].some(value => !Number.isFinite(value) || value < 0 || value > 100)) {
+      message.error("Discounts must be between 0 and 100 percent");
+      return;
+    }
     setSavingCreateOrder(true);
 
     try {
@@ -1784,6 +1797,7 @@ export default function OrdersTab({
         personalAddress: createPersonalAddress.trim(),
         notes: createNotes.trim(),
         whatsAppConsent: createWhatsAppConsent,
+        orderDiscountPercent: createOrderDiscountPercent,
         items: validItems,
       };
       const res = editingOrder
@@ -3289,7 +3303,7 @@ export default function OrdersTab({
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "1fr 120px 90px",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 100px 150px 90px",
                     gap: 10,
                     alignItems: "center",
                   }}
@@ -3300,7 +3314,7 @@ export default function OrdersTab({
                     onChange={(v) =>
                       setCreateItems((prev) =>
                         prev.map((x, i) =>
-                          i === index ? { ...x, productId: v } : x,
+                          i === index ? { ...x, productId: v, productDiscountPercent: 0 } : x,
                         ),
                       )
                     }
@@ -3322,6 +3336,21 @@ export default function OrdersTab({
                     style={{ width: "100%" }}
                   />
 
+                  <label>
+                    <Text type="secondary">Product discount (%)</Text>
+                    <InputNumber
+                      aria-label={`Product ${index + 1} discount percent`}
+                      min={0}
+                      max={100}
+                      precision={2}
+                      value={row.productDiscountPercent ?? 0}
+                      onChange={(value) => setCreateItems(prev => prev.map((item, i) =>
+                        i === index ? { ...item, productDiscountPercent: Number(value || 0) } : item,
+                      ))}
+                      style={{ width: "100%" }}
+                    />
+                  </label>
+
                   <Button
                     danger
                     disabled={createItems.length <= 1}
@@ -3336,6 +3365,23 @@ export default function OrdersTab({
                 </div>
               </Card>
             ))}
+            <label>
+              <Text strong>Whole-order discount (%)</Text>
+              <InputNumber
+                aria-label="Whole-order discount percent"
+                min={0}
+                max={100}
+                precision={2}
+                value={createOrderDiscountPercent}
+                onChange={value => setCreateOrderDiscountPercent(Number(value || 0))}
+                style={{ width: "100%", marginTop: 6 }}
+              />
+            </label>
+            <Text type="secondary">
+              No code needed. The whole-order discount applies after product discounts
+              and any existing code discount. Enter 0 for no discount. Weight-based
+              prices are finalized when the order is packed.
+            </Text>
           </div>
         </div>
       </Modal>
