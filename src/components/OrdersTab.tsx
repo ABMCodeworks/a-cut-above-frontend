@@ -89,6 +89,9 @@ type PackingStateItem = {
 };
 
 type AdminCreateProduct = {
+  discountPercent?: string | number;
+  discountStartsAt?: string | null;
+  discountExpiresAt?: string | null;
   avgWeightG?: number | null;
   id: string;
   name: string;
@@ -107,6 +110,16 @@ type CreateOrderItem = {
   productId: string;
   qty: number;
 };
+
+function activeProductDiscount(product?: AdminCreateProduct) {
+  const now = Date.now();
+  const start = product?.discountStartsAt ? new Date(product.discountStartsAt).getTime() : null;
+  const end = product?.discountExpiresAt ? new Date(product.discountExpiresAt).getTime() : null;
+  if (start !== null && (!Number.isFinite(start) || start > now)) return 0;
+  if (end !== null && (!Number.isFinite(end) || end <= now)) return 0;
+  const percent = Number(product?.discountPercent || 0);
+  return Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : 0;
+}
 
 function money(v: any) {
   const n = typeof v === "number" ? v : Number(v);
@@ -1756,7 +1769,7 @@ export default function OrdersTab({
       .map((x) => ({
         productId: x.productId,
         qty: Number(x.qty || 1),
-        productDiscountPercent: x.productDiscountPercent ?? 0,
+        productDiscountPercent: x.productDiscountPercent,
       }));
 
     if (!createCustomerName.trim()) {
@@ -1778,7 +1791,7 @@ export default function OrdersTab({
       message.error("Add each product only once and adjust its quantity");
       return;
     }
-    if ([createOrderDiscountPercent, ...validItems.map(item => item.productDiscountPercent)].some(value => !Number.isFinite(value) || value < 0 || value > 100)) {
+    if ([createOrderDiscountPercent, ...validItems.map(item => item.productDiscountPercent ?? 0)].some(value => !Number.isFinite(value) || value < 0 || value > 100)) {
       message.error("Discounts must be between 0 and 100 percent");
       return;
     }
@@ -3314,7 +3327,7 @@ export default function OrdersTab({
                     onChange={(v) =>
                       setCreateItems((prev) =>
                         prev.map((x, i) =>
-                          i === index ? { ...x, productId: v, productDiscountPercent: 0 } : x,
+                          i === index ? { ...x, productId: v, productDiscountPercent: undefined } : x,
                         ),
                       )
                     }
@@ -3343,7 +3356,7 @@ export default function OrdersTab({
                       min={0}
                       max={100}
                       precision={2}
-                      value={row.productDiscountPercent ?? 0}
+                      value={row.productDiscountPercent ?? activeProductDiscount(adminProducts.find(product => product.id === row.productId))}
                       onChange={(value) => setCreateItems(prev => prev.map((item, i) =>
                         i === index ? { ...item, productDiscountPercent: Number(value || 0) } : item,
                       ))}
@@ -3378,6 +3391,7 @@ export default function OrdersTab({
               />
             </label>
             <Text type="secondary">
+              Active product discounts apply automatically; you can override them above.
               No code needed. The whole-order discount applies after product discounts
               and any existing code discount. Enter 0 for no discount. Weight-based
               prices are finalized when the order is packed.
