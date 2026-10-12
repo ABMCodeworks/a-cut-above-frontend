@@ -1,63 +1,106 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Button, Card, Form, Input, Skeleton, Typography, message } from "antd";
+import { Alert, Button, Card, Form, Input, InputNumber, Skeleton, Space, Typography, message } from "antd";
 import { api } from "../api/client";
 
 const phoneRules = [{ required: true, message: "Enter a phone number" }, { pattern: /^\+[1-9]\d{7,14}$/, message: "Use international format, e.g. +263790246005" }];
+const types = [{ key: "received", label: "Order received" }, { key: "packed", label: "Order packed" }, { key: "delivered", label: "Order delivered" }] as const;
+type MessageType = typeof types[number]["key"];
+type Settings = { from: string; receivedSid: string; packedSid: string; deliveredSid: string };
+type Result = { messageSid?: string; status?: string; errorCode?: number; errorMessage?: string; body?: string; error?: string; variables?: Record<string, string> };
 
 export default function WhatsAppSettings({ canManage }: { canManage: boolean }) {
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<Settings>();
   const [testForm] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
+  const [testing, setTesting] = useState<MessageType | null>(null);
+  const [checking, setChecking] = useState<MessageType | null>(null);
   const [credentialsConfigured, setCredentialsConfigured] = useState(false);
-  const [savedFrom, setSavedFrom] = useState("");
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
-  const from = Form.useWatch("from", form);
+  const [saved, setSaved] = useState<Settings | null>(null);
+  const [results, setResults] = useState<Partial<Record<MessageType, Result>>>({});
+  const current = Form.useWatch([], form);
+  const samples = Form.useWatch([], testForm);
+  const dirty = !saved || Object.keys(saved).some(key => current?.[key] !== saved[key as keyof Settings]);
   async function load() {
     setLoading(true); setError("");
     try {
       const { data } = await api.get("/api/admin/settings/whatsapp");
-      form.setFieldsValue(data.settings); setSavedFrom(data.settings.from);
+      form.setFieldsValue(data.settings); setSaved(data.settings);
       setCredentialsConfigured(data.credentialsConfigured); setLoaded(true);
     } catch { setError("Could not load WhatsApp settings."); }
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, []);
-  async function save(values: { from: string }) {
-    setSaving(true); setResult(null);
+  async function save(values: Settings) {
+    setSaving(true);
     try {
       const { data } = await api.put("/api/admin/settings/whatsapp", values);
-      form.setFieldsValue(data.settings); setSavedFrom(data.settings.from);
-      message.success("WhatsApp sender saved");
+      form.setFieldsValue(data.settings); setSaved(data.settings);
+      message.success("WhatsApp settings saved");
     } catch (e: any) { message.error(e?.response?.data?.error || "Could not save WhatsApp settings"); }
     finally { setSaving(false); }
   }
-  async function test(values: { to: string }) {
-    setTesting(true); setResult(null);
+  async function test(type: MessageType) {
+    let values;
+    try { values = await testForm.validateFields(); } catch { return; }
+    setTesting(type);
+    setResults(previous => ({ ...previous, [type]: undefined }));
     try {
-      const { data } = await api.post("/api/admin/settings/whatsapp/test", values);
-      setResult({ ok: true, text: `Twilio accepted the test message to ${values.to}. Check WhatsApp for delivery. Message ID: ${data.messageSid}` });
-    } catch (e: any) { setResult({ ok: false, text: e?.response?.data?.error || "Could not send the test message" }); }
-    finally { setTesting(false); }
+      const { data } = await api.post("/api/admin/settings/whatsapp/test", { ...values, type });
+      setResults(previous => ({ ...previous, [type]: data }));
+    } catch (e: any) { setResults(previous => ({ ...previous, [type]: { error: e?.response?.data?.error || "Could not send the test message" } })); }
+    finally { setTesting(null); }
+  }
+  async function check(type: MessageType) {
+    const sid = results[type]?.messageSid;
+    if (!sid) return;
+    setChecking(type);
+    try {
+      const { data } = await api.get(`/api/admin/settings/whatsapp/messages/${sid}`);
+      setResults(previous => ({ ...previous, [type]: { ...previous[type], ...data } }));
+    } catch (e: any) { message.error(e?.response?.data?.error || "Could not check delivery status"); }
+    finally { setChecking(null); }
   }
   return <Card title="WhatsApp">
-    <Typography.Paragraph type="secondary">Choose the Twilio WhatsApp sender used for order updates. The number must be linked to your Twilio account.</Typography.Paragraph>
+    <Typography.Paragraph type="secondary">Set your Twilio WhatsApp sender and approved Content SIDs. Saved templates are used for customer order updates.</Typography.Paragraph>
     {error && <Alert type="error" showIcon title={error} action={<Button onClick={load}>Retry</Button>} />}
     {loading ? <Skeleton active /> : loaded && <>
       {!credentialsConfigured && <Alert type="warning" showIcon title="Twilio account credentials are missing" description="Configure TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN on the server to send messages." style={{ marginBottom: 16 }} />}
-      <Form form={form} layout="vertical" onFinish={save} disabled={!canManage || saving || testing}>
+      <Form form={form} layout="vertical" onFinish={save} disabled={!canManage || saving || Boolean(testing)}>
         <Form.Item name="from" label="WhatsApp sender number" rules={phoneRules}><Input placeholder="+263790246005" /></Form.Item>
-        {canManage && <Button type="primary" htmlType="submit" loading={saving}>Save WhatsApp sender</Button>}
+        {types.map(({ key, label }) => <Form.Item key={key} name={`${key}Sid`} label={`${label} — Content SID`} rules={[{ pattern: /^(HX[0-9a-fA-F]{32})?$/, message: "Enter a Content SID: HX followed by 32 hexadecimal characters" }]}><Input placeholder="HX…" /></Form.Item>)}
+        <Typography.Paragraph type="secondary">Use approved templates with {'{{1}}'} = first name, {'{{2}}'} = surname, {'{{3}}'} = order number, and {'{{4}}'} = total for the packed message. Put a space between the name placeholders: {'Hi {{1}} {{2}},'}. Messages without a saved Content SID use plain text and require an active 24-hour WhatsApp conversation.</Typography.Paragraph>
+        {canManage && <Button type="primary" htmlType="submit" loading={saving}>Save WhatsApp settings</Button>}
       </Form>
-      {canManage ? <Form form={testForm} layout="vertical" onFinish={test} style={{ marginTop: 24 }} disabled={saving || testing}>
-        <Typography.Paragraph>Send a test message from {savedFrom} to a WhatsApp recipient. Save sender changes before testing. The recipient may need to message your sender first to open a WhatsApp conversation.</Typography.Paragraph>
-        <Form.Item name="to" label="Test recipient number" rules={phoneRules}><Input placeholder="+263…" /></Form.Item>
-        <Button htmlType="submit" loading={testing} disabled={!credentialsConfigured || from !== savedFrom}>Send test WhatsApp</Button>
-      </Form> : <Typography.Paragraph type="secondary">You have read-only access. Ask an administrator with Settings access to make changes or send a test.</Typography.Paragraph>}
-      {result && <Alert type={result.ok ? "success" : "error"} showIcon title={result.text} style={{ marginTop: 16 }} />}
+      {canManage ? <>
+        <Form form={testForm} layout="vertical" initialValues={{ firstName: "Bryce", surname: "Billing", orderNo: "TEST-1001", total: 45 }} style={{ marginTop: 24 }} disabled={saving || Boolean(testing)}>
+          <Typography.Paragraph>Test each approved message using the sample values below. Tests send a WhatsApp message without creating or changing an order. Save settings before testing.</Typography.Paragraph>
+          <Form.Item name="to" label="Test recipient number" rules={phoneRules}><Input placeholder="+263…" /></Form.Item>
+          <Form.Item name="firstName" label="First name — variable 1" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input maxLength={100} /></Form.Item>
+          <Form.Item name="surname" label="Surname — variable 2" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input maxLength={100} /></Form.Item>
+          <Form.Item name="orderNo" label="Order number — variable 3" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input maxLength={100} /></Form.Item>
+          <Form.Item name="total" label="Order total (USD) — variable 4, packed only" rules={[{ required: true }]}><InputNumber min={0} max={1000000} precision={2} /></Form.Item>
+        </Form>
+        <Space orientation="vertical" style={{ width: "100%" }}>
+          {types.map(({ key, label }) => {
+            const result = results[key];
+            const failed = result?.error || result?.errorCode || result?.status === "failed" || result?.status === "undelivered";
+            return <Card key={key} size="small" title={label}>
+              <Typography.Paragraph type="secondary">Sample variables: 1 = {samples?.firstName}, 2 = {samples?.surname}, 3 = {samples?.orderNo}{key === "packed" && `, 4 = $${Number(samples?.total || 0).toFixed(2)}`}</Typography.Paragraph>
+              <Button onClick={() => test(key)} loading={testing === key} disabled={!credentialsConfigured || dirty || !saved?.[`${key}Sid`] || saving || Boolean(testing)}>Test {label.toLowerCase()}</Button>
+              {!saved?.[`${key}Sid`] && <Typography.Paragraph type="secondary">Save this message’s approved Content SID to enable testing.</Typography.Paragraph>}
+              {result && <Alert style={{ marginTop: 12 }} showIcon type={failed ? "error" : ["delivered", "read"].includes(result.status || "") ? "success" : "info"} title={result.error || `Twilio status: ${result.status || "accepted"}`} description={<>
+                {result.messageSid && <div>Message ID: {result.messageSid}</div>}
+                {result.errorCode && <div>Error {result.errorCode}: {result.errorMessage || "Delivery failed"}{result.errorCode === 63016 && " — check that the Content SID is approved for WhatsApp."}</div>}
+                {result.body && <Typography.Paragraph style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{result.body}</Typography.Paragraph>}
+                {result.messageSid && <><Typography.Paragraph>Queued or sent does not confirm delivery. Check again after a few seconds; the received message in WhatsApp shows the final wording.</Typography.Paragraph><Button onClick={() => check(key)} loading={checking === key}>Check delivery status</Button></>}
+              </>} />}
+            </Card>;
+          })}
+        </Space>
+      </> : <Typography.Paragraph type="secondary">You have read-only access. Ask an administrator with Settings access to make changes or send a test.</Typography.Paragraph>}
     </>}
   </Card>;
 }
