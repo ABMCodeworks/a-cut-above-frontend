@@ -6,7 +6,7 @@ const phoneRules = [{ required: true, message: "Enter a phone number" }, { patte
 const types = [{ key: "received", label: "Order received" }, { key: "packed", label: "Order packed" }, { key: "delivered", label: "Order delivered" }] as const;
 type MessageType = typeof types[number]["key"];
 type Settings = { from: string; receivedSid: string; packedSid: string; deliveredSid: string };
-type Result = { messageSid?: string; status?: string; errorCode?: number; errorMessage?: string; body?: string; error?: string; variables?: Record<string, string> };
+type Result = { contentSid?: string; messageSid?: string; status?: string; errorCode?: number; errorMessage?: string; body?: string; error?: string; variables?: Record<string, string> };
 
 export default function WhatsAppSettings({ canManage }: { canManage: boolean }) {
   const [form] = Form.useForm<Settings>();
@@ -44,7 +44,7 @@ export default function WhatsAppSettings({ canManage }: { canManage: boolean }) 
   }
   async function test(type: MessageType) {
     let values;
-    try { values = await testForm.validateFields(); } catch { return; }
+    try { values = await testForm.validateFields(type === "received" ? ["to"] : undefined); } catch { return; }
     setTesting(type);
     setResults(previous => ({ ...previous, [type]: undefined }));
     try {
@@ -71,12 +71,12 @@ export default function WhatsAppSettings({ canManage }: { canManage: boolean }) 
       <Form form={form} layout="vertical" onFinish={save} disabled={!canManage || saving || Boolean(testing)}>
         <Form.Item name="from" label="WhatsApp sender number" rules={phoneRules}><Input placeholder="+263790246005" /></Form.Item>
         {types.map(({ key, label }) => <Form.Item key={key} name={`${key}Sid`} label={`${label} — Content SID`} rules={[{ pattern: /^(HX[0-9a-fA-F]{32})?$/, message: "Enter a Content SID: HX followed by 32 hexadecimal characters" }]}><Input placeholder="HX…" /></Form.Item>)}
-        <Typography.Paragraph type="secondary">Use approved templates with {'{{1}}'} = first name, {'{{2}}'} = surname, {'{{3}}'} = order number, and {'{{4}}'} = total for the packed message. Put a space between the name placeholders: {'Hi {{1}} {{2}},'}. Messages without a saved Content SID use plain text and require an active 24-hour WhatsApp conversation.</Typography.Paragraph>
+        <Typography.Paragraph type="secondary">The order received template has no variables. For packed and delivered templates, use {'{{1}}'} = first name, {'{{2}}'} = surname, {'{{3}}'} = order number, and {'{{4}}'} = total for the packed message. Put a space between the name placeholders: {'Hi {{1}} {{2}},'}. Each message requires its saved, approved Content SID. No plain-text fallback is sent.</Typography.Paragraph>
         {canManage && <Button type="primary" htmlType="submit" loading={saving}>Save WhatsApp settings</Button>}
       </Form>
       {canManage ? <>
         <Form form={testForm} layout="vertical" initialValues={{ firstName: "Bryce", surname: "Billing", orderNo: "TEST-1001", total: 45 }} style={{ marginTop: 24 }} disabled={saving || Boolean(testing)}>
-          <Typography.Paragraph>Test each approved message using the sample values below. Tests send a WhatsApp message without creating or changing an order. Save settings before testing.</Typography.Paragraph>
+          <Typography.Paragraph>Test each approved message. Order received only needs a recipient; packed and delivered use the sample values below. Tests send a WhatsApp message without creating or changing an order. Save settings before testing.</Typography.Paragraph>
           <Form.Item name="to" label="Test recipient number" rules={phoneRules}><Input placeholder="+263…" /></Form.Item>
           <Form.Item name="firstName" label="First name — variable 1" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input maxLength={100} /></Form.Item>
           <Form.Item name="surname" label="Surname — variable 2" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input maxLength={100} /></Form.Item>
@@ -88,10 +88,11 @@ export default function WhatsAppSettings({ canManage }: { canManage: boolean }) 
             const result = results[key];
             const failed = result?.error || result?.errorCode || result?.status === "failed" || result?.status === "undelivered";
             return <Card key={key} size="small" title={label}>
-              <Typography.Paragraph type="secondary">Sample variables: 1 = {samples?.firstName}, 2 = {samples?.surname}, 3 = {samples?.orderNo}{key === "packed" && `, 4 = $${Number(samples?.total || 0).toFixed(2)}`}</Typography.Paragraph>
+              <Typography.Paragraph type="secondary">{key === "received" ? "This template has no variables." : <>Sample variables: 1 = {samples?.firstName}, 2 = {samples?.surname}, 3 = {samples?.orderNo}{key === "packed" && `, 4 = $${Number(samples?.total || 0).toFixed(2)}`}</>}</Typography.Paragraph>
               <Button onClick={() => test(key)} loading={testing === key} disabled={!credentialsConfigured || dirty || !saved?.[`${key}Sid`] || saving || Boolean(testing)}>Test {label.toLowerCase()}</Button>
               {!saved?.[`${key}Sid`] && <Typography.Paragraph type="secondary">Save this message’s approved Content SID to enable testing.</Typography.Paragraph>}
               {result && <Alert style={{ marginTop: 12 }} showIcon type={failed ? "error" : ["delivered", "read"].includes(result.status || "") ? "success" : "info"} title={result.error || `Twilio status: ${result.status || "accepted"}`} description={<>
+                {result.contentSid && <div>Template used: {result.contentSid}</div>}
                 {result.messageSid && <div>Message ID: {result.messageSid}</div>}
                 {result.errorCode && <div>Error {result.errorCode}: {result.errorMessage || "Delivery failed"}{result.errorCode === 63016 && " — check that the Content SID is approved for WhatsApp."}</div>}
                 {result.body && <Typography.Paragraph style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{result.body}</Typography.Paragraph>}
