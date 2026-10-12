@@ -33,10 +33,12 @@ import {
   FilterOutlined,
   PlusOutlined,
   SettingOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import writeXlsxFile from "write-excel-file/browser";
 
+import { matchesOrderSearch } from "../lib/orderSearch";
 import { api, API_BASE } from "../api/client";
 import type {
   AdminOrder,
@@ -919,6 +921,7 @@ export default function OrdersTab({
     "ALL" | "RETAIL" | "WHOLESALE"
   >("ALL");
 
+  const [orderSearch, setOrderSearch] = useState("");
   const [filterLocationId, setFilterLocationId] = useState("");
   const [filterScheduleId, setFilterScheduleId] = useState("");
 
@@ -1178,6 +1181,7 @@ export default function OrdersTab({
 
   const grouped = useMemo((): LocationGroup[] => {
     const filteredOrders = displayOrders.filter((o) => {
+      if (!matchesOrderSearch(o, orderSearch)) return false;
       const anyO = o as any;
       const isArchived = String(o.status || "").toUpperCase() === "DELIVERED";
 
@@ -1252,6 +1256,7 @@ export default function OrdersTab({
     );
   }, [
     displayOrders,
+    orderSearch,
     schedules,
     filterLocationId,
     filterScheduleId,
@@ -2601,6 +2606,26 @@ export default function OrdersTab({
         </div>
       )}
 
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          aria-label="Search orders by customer or order number"
+          placeholder="Search customer, business or order number"
+          prefix={<SearchOutlined />}
+          allowClear
+          size="large"
+          value={orderSearch}
+          onChange={event => {
+            setOrderSearch(event.target.value);
+            setSelectedRowKeys([]);
+            setExpandedRowKeys([]);
+          }}
+        />
+        <Text type="secondary">
+          Matches partial names and numbers, including small typos. Searches within the current filters.
+          {orderSearch.trim() ? ` ${visibleOrderSummary.count} matching order${visibleOrderSummary.count === 1 ? "" : "s"}.` : ""}
+        </Text>
+      </div>
+
       {!isMobile && (
         <>
           <Card size="small" style={{ marginBottom: 12 }}>
@@ -2706,12 +2731,12 @@ export default function OrdersTab({
 
       {grouped.length === 0 ? (
         <Empty
-          description="No orders found"
+          description={orderSearch.trim() ? "No matching orders. Try another name or order number, or adjust your filters." : "No orders found"}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       ) : (
         <Collapse
-          key={orderView}
+          key={`${orderView}:${orderSearch}`}
           items={collapseItems}
           defaultActiveKey={grouped.map((g) => g.locationId)}
         />

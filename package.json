@@ -11,7 +11,8 @@
     "build": "vite build",
     "test:seo": "npm run build && node --test tests/seo.test.mjs",
     "preview": "vite preview",
-    "images:webp": "node scripts/convert-images-to-webp.mjs"
+    "images:webp": "node scripts/convert-images-to-webp.mjs",
+    "test:orders": "node --test tests/order-search.test.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
