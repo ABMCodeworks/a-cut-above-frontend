@@ -75,7 +75,7 @@ export default function WhatsAppSettings({ canManage }: { canManage: boolean }) 
         {canManage && <Button type="primary" htmlType="submit" loading={saving}>Save WhatsApp settings</Button>}
       </Form>
       {canManage ? <>
-        <Form form={testForm} layout="vertical" initialValues={{ firstName: "Bryce", surname: "Billing", orderNo: "TEST-1001", total: 45 }} style={{ marginTop: 24 }} disabled={saving || Boolean(testing)}>
+        <Form form={testForm} layout="vertical" initialValues={{ firstName: "John", surname: "Doe", orderNo: "TEST-1001", total: 45 }} style={{ marginTop: 24 }} disabled={saving || Boolean(testing)}>
           <Typography.Paragraph>Test each approved message. Order received only needs a recipient; packed and delivered use the sample values below. Tests send a WhatsApp message without creating or changing an order. Save settings before testing.</Typography.Paragraph>
           <Form.Item name="to" label="Test recipient number" rules={phoneRules}><Input placeholder="+263…" /></Form.Item>
           <Form.Item name="firstName" label="First name — variable 1" rules={[{ required: true, whitespace: true }, { max: 100 }]}><Input maxLength={100} /></Form.Item>
