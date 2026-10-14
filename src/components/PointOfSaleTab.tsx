@@ -7,22 +7,31 @@ import { api } from "../api/client";
 const { Text, Paragraph } = Typography;
 type Product = {
   id: string; name: string; unit: string; retailPrice: number | string;
-  stockQty: number; processingStockWeightKg: number | string;
+  stockQty: number; avgWeightG?: number | null; posPartialWeightKg: number | string; processingStockWeightKg: number | string;
   isForProcessing: boolean; isActive: boolean; isHiddenFromShop: boolean;
   category?: { name: string } | null;
 };
-type Line = { productId: string; qty: number | null; weightKg: number | null; unitPrice: number | null; pricingMode: "TOTAL" | "INDIVIDUAL" | "WEIGHT"; packetPrices: (number | null)[]; productTotal: number | null };
-type SalePayload = { requestId: string; customerName: string; customerPhone: string; notes: string; items: { productId: string; qty: number; weightKg?: number; packetPrices?: number[]; unitPrice?: number; lineTotal?: number; priceBasis?: "PACKET" | "WEIGHT" }[] };
+type Line = { productId: string; qty: number | null; weightKg: number | null; discountPercent: number };
+type SalePayload = { requestId: string; customerName: string; customerPhone: string; notes: string; orderDiscountPercent: number; items: { productId: string; qty?: number; weightKg?: number; unitPrice: number; discountPercent: number }[] };
 type Sale = { orderNo: string; customerName: string; total: number | string; items: { id: string; productName: string; qty: number | string; weightKg?: number | string | null; lineTotal: number | string }[] };
 const weighed = (p: Product) => p.isForProcessing || /^(kg|kgs|kilogram|kilograms|g|gram|grams)$/.test(p.unit.trim().toLowerCase());
 const defaultPrice = (p: Product) => Math.round(Number(p.retailPrice) * (/^(g|gram|grams)$/.test(p.unit.trim().toLowerCase()) ? 1000 : 1) * 100) / 100;
-const lineValue = (line: Line, _product: Product) => line.pricingMode === "TOTAL" ? line.productTotal || 0 : line.pricingMode === "INDIVIDUAL" ? line.packetPrices.reduce<number>((sum, price) => sum + Math.round((price || 0) * 100), 0) / 100 : Math.round(((line.unitPrice || 0) * (line.pricingMode === "WEIGHT" ? line.weightKg || 0 : line.qty || 0) + Number.EPSILON) * 100) / 100;
+const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const gross = (line: Line, p: Product) => round(defaultPrice(p) * (weighed(p) ? line.weightKg || 0 : line.qty || 0));
+const lineValue = (line: Line, p: Product, orderPercent = 0) => {
+  const subtotal = gross(line, p);
+  const afterProduct = round(subtotal - round(subtotal * line.discountPercent / 100));
+  return round(afterProduct - round(afterProduct * orderPercent / 100));
+};
+const availableKg = (p: Product) => p.isForProcessing ? Number(p.processingStockWeightKg) : Number(Math.max(0, p.stockQty * Number(p.avgWeightG || 0) / 1000 - Number(p.posPartialWeightKg || 0)).toFixed(6));
+const stockLabel = (p: Product) => weighed(p) ? `${availableKg(p).toFixed(3)} kg${!p.isForProcessing ? " (from average pack weight)" : ""}` : `${p.stockQty} packs`;
 const money = (n: number | string) => `$${Number(n).toFixed(2)}`;
 
 export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [orderDiscountPercent, setOrderDiscountPercent] = useState(0);
   const [lines, setLines] = useState<Line[]>([]);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -32,24 +41,20 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
   const submitting = useRef(false);
   const locked = saving || uncertain;
 
+  const subtotal = round(lines.reduce((sum, line) => { const p = products.find(p => p.id === line.productId); return sum + (p ? gross(line, p) : 0); }, 0));
   const total = lines.reduce((sum, line) => {
     const product = products.find(p => p.id === line.productId);
-    return sum + (product ? Math.round(lineValue(line, product) * 100) : 0);
+    return sum + (product ? Math.round(lineValue(line, product, orderDiscountPercent) * 100) : 0);
   }, 0) / 100;
   const issue = (line: Line, product: Product) => {
-    if (line.qty === null || !Number.isInteger(line.qty) || line.qty < (product.isForProcessing ? 0 : 1) || line.qty > product.stockQty) return "Check packets against available stock.";
-    if (weighed(product) && (!line.weightKg || line.weightKg <= 0)) return "Enter the total weight sold.";
-    if (product.isForProcessing && (line.weightKg || 0) > Number(product.processingStockWeightKg)) return "Weight exceeds available stock.";
-    if (line.pricingMode === "INDIVIDUAL") {
-      if (!line.qty || line.qty > 1000) return "Individual pricing supports 1–1,000 packets. Otherwise use a product total.";
-      if (line.packetPrices.length !== line.qty || line.packetPrices.some(price => price === null || price < 0 || price > 99999999.99)) return "Enter a price for every packet.";
-      return null;
-    }
-    const price = line.pricingMode === "TOTAL" ? line.productTotal : line.unitPrice;
-    if (price === null || price < 0 || price > 99999999.99) return "Enter a valid product price.";
+    if (!Number.isFinite(line.discountPercent) || line.discountPercent < 0 || line.discountPercent > 100) return "Enter a discount between 0 and 100%.";
+    if (weighed(product)) {
+      if (!product.isForProcessing && !product.avgWeightG) return "Set an average pack weight in Products to sell by kg.";
+      if (!line.weightKg || line.weightKg <= 0 || line.weightKg > availableKg(product)) return "Check kg against available stock.";
+    } else if (line.qty === null || !Number.isInteger(line.qty) || line.qty < 1 || line.qty > product.stockQty) return "Check packs against available stock.";
     return null;
   };
-  const ready = lines.length > 0 && total > 0 && total <= 99999999.99 && lines.every(line => {
+  const ready = lines.length > 0 && subtotal > 0 && subtotal <= 99999999.99 && orderDiscountPercent >= 0 && orderDiscountPercent <= 100 && total >= 0 && total <= 99999999.99 && lines.every(line => {
     const product = products.find(p => p.id === line.productId);
     return product && !issue(line, product);
   });
@@ -65,9 +70,7 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
   function updateLine(id: string, values: Partial<Line>) {
     setLines(current => current.map(line => {
       if (line.productId !== id) return line;
-      const next = { ...line, ...values };
-      if (values.qty !== undefined) next.packetPrices = Array.from({ length: Math.min(1000, Math.max(0, next.qty || 0)) }, (_, i) => line.packetPrices[i] ?? null);
-      return next;
+      return { ...line, ...values };
     }));
   }
   async function completeSale() {
@@ -81,15 +84,17 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
         for (const line of lines) {
           const product = products.find(p => p.id === line.productId);
           if (!product) { message.error("A selected product is no longer available. Refresh products."); return; }
-          if (line.qty === null || !Number.isInteger(line.qty) || line.qty < (product.isForProcessing ? 0 : 1) || line.qty > product.stockQty) {
-            message.error(`Check the number of packets for ${product.name}`); return;
-          }
-          if (weighed(product) && (!line.weightKg || line.weightKg <= 0)) { message.error(`Enter the total weight for ${product.name}`); return; }
+          const problem = issue(line, product);
+          if (problem) { message.error(`${product.name}: ${problem}`); return; }
         }
         if (!ready) { message.error("Check product quantities, weights and prices before completing the sale"); return; }
         payload = {
           requestId: crypto.randomUUID(), customerName: values.customerName || "", customerPhone: values.customerPhone || "", notes: values.notes || "",
-          items: lines.map(line => ({ productId: line.productId, qty: line.qty!, ...(line.pricingMode === "TOTAL" ? { lineTotal: line.productTotal! } : line.pricingMode === "INDIVIDUAL" ? { packetPrices: line.packetPrices as number[] } : { unitPrice: line.unitPrice!, priceBasis: "WEIGHT" as const }), ...(weighed(products.find(p => p.id === line.productId)!) ? { weightKg: line.weightKg! } : {}) })),
+          orderDiscountPercent,
+          items: lines.map(line => {
+            const product = products.find(p => p.id === line.productId)!;
+            return { productId: line.productId, discountPercent: line.discountPercent, unitPrice: defaultPrice(product), ...(weighed(product) ? { weightKg: line.weightKg! } : { qty: line.qty! }) };
+          }),
         };
         setPending(payload);
       }
@@ -113,24 +118,24 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
 
   if (completed) return <Card>
     <Result status="success" title="Sale recorded" subTitle={`${completed.orderNo} · ${completed.customerName} · ${money(completed.total)}`} extra={
-      <Button type="primary" onClick={() => { setCompleted(null); setLines([]); form.resetFields(); void loadProducts(); }}>New sale</Button>
+      <Button type="primary" onClick={() => { setCompleted(null); setLines([]); setOrderDiscountPercent(0); form.resetFields(); void loadProducts(); }}>New sale</Button>
     } />
     {completed.items.map(item => <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: "1px solid #eee" }}>
-      <Text>{item.productName} · {Number(item.qty)} packets{item.weightKg != null ? ` · ${Number(item.weightKg)} kg` : ""}</Text><Text strong>{money(item.lineTotal)}</Text>
+      <Text>{item.productName} · {item.weightKg != null ? `${Number(item.weightKg)} kg` : `${Number(item.qty)} packs`}</Text><Text strong>{money(item.lineTotal)}</Text>
     </div>)}
     <Paragraph type="secondary" style={{ marginTop: 16 }}>Stock has been deducted. This completed sale is included in Orders and revenue reports.</Paragraph>
   </Card>;
 
   return <div className="pos-workspace">
-    <div className="pos-heading"><div><Typography.Title level={3} style={{ margin: 0 }}>New sale</Typography.Title><Paragraph type="secondary">Enter packets sold and a product total, or enter a different price for each packet. Your total updates automatically.</Paragraph></div><Tag icon={<ShoppingCartOutlined />}>Walk-in sale</Tag></div>
+    <div className="pos-heading"><div><Typography.Title level={3} style={{ margin: 0 }}>New sale</Typography.Title><Paragraph type="secondary">Enter kg or packs sold. Prices and totals are calculated automatically, with optional product and order discounts.</Paragraph></div><Tag icon={<ShoppingCartOutlined />}>Walk-in sale</Tag></div>
     {loadError && <Alert type="error" showIcon title="Could not load products" action={<Button onClick={loadProducts}>Retry</Button>} style={{ marginBottom: 16 }} />}
     {uncertain && <Alert type="warning" showIcon title="The sale has not been confirmed" description="Retry the same sale below. Its reference prevents stock being deducted twice if it was already recorded." style={{ marginBottom: 16 }} />}
     <Row gutter={[24, 24]}>
       <Col xs={24} lg={15}>
         <Card className="pos-products" title={`Products · ${lines.length}`} extra={<Button icon={<ReloadOutlined />} disabled={locked} loading={loading} onClick={loadProducts}>Refresh</Button>}>
           <Select<string | null> showSearch optionFilterProp="label" value={null} aria-label="Add a product" size="large" placeholder="Search and add a product…" style={{ width: "100%", marginBottom: 20 }} loading={loading} disabled={locked || loadError || loading}
-            options={products.filter(p => !lines.some(line => line.productId === p.id)).map(p => ({ value: p.id, label: `${p.name}${p.category ? ` · ${p.category.name}` : ""} · ${p.stockQty} packets${p.isHiddenFromShop ? " · Hidden" : ""}${!p.isActive ? " · Inactive" : ""}${p.isForProcessing ? " · Processing" : ""}` }))}
-            onChange={id => { if (!id) return; const product = products.find(p => p.id === id)!; setLines(current => [...current, { productId: id, qty: product.isForProcessing && product.stockQty === 0 ? 0 : 1, weightKg: null, unitPrice: defaultPrice(product), pricingMode: "TOTAL", packetPrices: product.isForProcessing && product.stockQty === 0 ? [] : [null], productTotal: null }]); }}
+            options={products.filter(p => !lines.some(line => line.productId === p.id)).map(p => ({ value: p.id, label: `${p.name}${p.category ? ` · ${p.category.name}` : ""} · ${stockLabel(p)}${p.isHiddenFromShop ? " · Hidden" : ""}${!p.isActive ? " · Inactive" : ""}${p.isForProcessing ? " · Processing" : ""}` }))}
+            onChange={id => { if (!id) return; setLines(current => [...current, { productId: id, qty: 1, weightKg: null, discountPercent: 0 }]); }}
           />
           {loading && !products.length ? <Spin /> : !lines.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<><strong>Your sale is empty</strong><div>Search above to add your first product.</div></>} />}
           <Space orientation="vertical" style={{ width: "100%" }} size={16}>
@@ -139,44 +144,24 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
               if (!product) return <Alert key={line.productId} type="error" title="Product no longer available" action={<Button disabled={locked} onClick={() => setLines(lines.filter(l => l.productId !== line.productId))}>Remove</Button>} />;
               return <Card className="pos-line" size="small" key={product.id} title={product.name} extra={<Button aria-label={`Remove ${product.name}`} icon={<DeleteOutlined />} disabled={locked} onClick={() => setLines(current => current.filter(l => l.productId !== product.id))} />}>
                 <Space wrap style={{ marginBottom: 12 }}>
-                  <Tag>{product.stockQty} packets in stock</Tag>
+                  <Tag>{stockLabel(product)} in stock</Tag>
                   {product.isHiddenFromShop && <Tag color="gold">Hidden from shop</Tag>}
                   {!product.isActive && <Tag>Inactive</Tag>}
                   {product.isForProcessing && <Tag color="blue">{Number(product.processingStockWeightKg)} kg processing stock</Tag>}
                 </Space>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: "block", marginBottom: 6 }}>How would you like to enter the price?</label>
-                  <Select aria-label={`Pricing method: ${product.name}`} value={line.pricingMode} disabled={locked} style={{ width: "100%" }}
-                    options={[{ value: "TOTAL", label: "Total price for this product" }, { value: "INDIVIDUAL", label: "Enter each packet’s price" }, ...(weighed(product) ? [{ value: "WEIGHT", label: "Price per kg" }] : [])]}
-                    onChange={pricingMode => updateLine(product.id, { pricingMode, ...(pricingMode !== "TOTAL" && pricingMode !== line.pricingMode ? { unitPrice: defaultPrice(product) } : {}) })} />
-                </div>
                 <Row gutter={[12, 12]}>
-                  <Col xs={24} sm={weighed(product) ? 8 : 12}>
-                    <label style={{ display: "block", marginBottom: 6 }}>Packets sold</label>
-                    <InputNumber aria-label={`Packets sold: ${product.name}`} min={product.isForProcessing ? 0 : 1} max={product.stockQty} precision={0} value={line.qty} onChange={qty => updateLine(product.id, { qty })} disabled={locked} style={{ width: "100%" }} />
+                  <Col xs={24} sm={12}>
+                    <label style={{ display: "block", marginBottom: 6 }}>{weighed(product) ? "Kg sold" : "Number of packs"}</label>
+                    <InputNumber aria-label={`Quantity sold: ${product.name}`} min={weighed(product) ? 0.001 : 1} max={weighed(product) ? availableKg(product) : product.stockQty} precision={weighed(product) ? 3 : 0} step={weighed(product) ? 0.1 : 1} value={weighed(product) ? line.weightKg : line.qty} onChange={value => updateLine(product.id, weighed(product) ? { weightKg: value } : { qty: value })} disabled={locked} style={{ width: "100%" }} />
                   </Col>
-                  {weighed(product) && <Col xs={24} sm={8}>
-                    <label style={{ display: "block", marginBottom: 6 }}>Total weight sold (kg)</label>
-                    <InputNumber aria-label={`Weight sold: ${product.name}`} min={0.001} precision={3} step={0.1} value={line.weightKg} onChange={weightKg => updateLine(product.id, { weightKg })} disabled={locked} style={{ width: "100%" }} />
-                  </Col>}
-                  {line.pricingMode !== "INDIVIDUAL" && <Col xs={24} sm={weighed(product) ? 8 : 12}>
-                    <label style={{ display: "block", marginBottom: 6 }}>{line.pricingMode === "TOTAL" ? "Total price for these packets" : "Price per kg"}</label>
-                    <InputNumber aria-label={`Price: ${product.name}`} min={0} max={99999999.99} precision={2} prefix="$" value={line.pricingMode === "TOTAL" ? line.productTotal : line.unitPrice} onChange={price => updateLine(product.id, line.pricingMode === "TOTAL" ? { productTotal: price } : { unitPrice: price })} disabled={locked} style={{ width: "100%" }} />
-                  </Col>}
+                  <Col xs={24} sm={12}>
+                    <label style={{ display: "block", marginBottom: 6 }}>Product discount (%)</label>
+                    <InputNumber aria-label={`Discount: ${product.name}`} min={0} max={100} precision={2} value={line.discountPercent} onChange={value => updateLine(product.id, { discountPercent: value || 0 })} disabled={locked} style={{ width: "100%" }} />
+                  </Col>
                 </Row>
-                {line.pricingMode === "INDIVIDUAL" && <div style={{ marginTop: 16 }}>
-                  <Text type="secondary">Enter the actual selling price of each packet.</Text>
-                  <Row gutter={[12, 12]} style={{ marginTop: 8, maxHeight: 320, overflowY: "auto" }}>
-                    {line.packetPrices.map((price, index) => <Col xs={12} sm={8} key={index}>
-                      <label style={{ display: "block", marginBottom: 6 }}>Packet {index + 1}</label>
-                      <InputNumber aria-label={`Packet ${index + 1} price: ${product.name}`} min={0} max={99999999.99} precision={2} prefix="$" placeholder="Price" value={price} disabled={locked} style={{ width: "100%" }}
-                        onChange={value => updateLine(product.id, { packetPrices: line.packetPrices.map((existing, i) => i === index ? value : existing) })} />
-                    </Col>)}
-                  </Row>
-                </div>}
-                <div className="pos-line-total"><Text type="secondary">{line.pricingMode === "TOTAL" ? `${line.qty || 0} packets · Product total` : line.pricingMode === "INDIVIDUAL" ? `${line.qty || 0} individual packet prices` : `${line.pricingMode === "WEIGHT" ? `${line.weightKg || 0} kg` : `${line.qty || 0} packets`} × ${money(line.unitPrice || 0)}`}</Text><Text strong>{money(lineValue(line, product))}</Text></div>
+                <div className="pos-line-total"><Text type="secondary">{weighed(product) ? `${line.weightKg || 0} kg` : `${line.qty || 0} packs`} × {money(defaultPrice(product))}{line.discountPercent > 0 ? ` · ${line.discountPercent}% discount` : ""}</Text><Text strong>{money(lineValue(line, product))}</Text></div>
                 {issue(line, product) && <div className="pos-line-hint">{issue(line, product)}</div>}
-                {product.isForProcessing && <Text type="secondary">For part of a processing packet, enter 0 packets and the weight used.</Text>}
+
               </Card>;
             })}
           </Space>
@@ -186,8 +171,14 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
         <Card className="pos-summary" title="Sale summary">
           {lines.length ? lines.map(line => {
             const product = products.find(p => p.id === line.productId);
-            return product && <div className="pos-summary-line" key={line.productId}><Text>{product.name}</Text><Text strong>{money(lineValue(line, product))}</Text></div>;
+            return product && <div className="pos-summary-line" key={line.productId}><Text>{product.name}</Text><Text strong>{money(lineValue(line, product, orderDiscountPercent))}</Text></div>;
           }) : <Text type="secondary">Your products will appear here.</Text>}
+          <div style={{ marginTop: 16 }}>
+            <label style={{ display: "block", marginBottom: 6 }}>Whole order discount (%)</label>
+            <InputNumber aria-label="Whole order discount" min={0} max={100} precision={2} value={orderDiscountPercent} onChange={value => setOrderDiscountPercent(value || 0)} disabled={locked} style={{ width: "100%" }} />
+            <Text type="secondary">Applied after product discounts.</Text>
+          </div>
+          <div className="pos-summary-line"><Text>Total discount</Text><Text>{money(round(subtotal - total))}</Text></div>
           <div className="pos-grand-total"><Text>Total to collect</Text><strong>{money(total)}</strong><Text type="secondary">{lines.length} product{lines.length === 1 ? "" : "s"} · Calculated from product prices</Text></div>
           <Collapse ghost items={[{ key: "customer", forceRender: true, label: "Customer details & notes (optional)", children:
             <Form form={form} layout="vertical" disabled={locked}>

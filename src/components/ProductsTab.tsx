@@ -890,6 +890,12 @@ export default function ProductsTab({
             <Text>{Number(Number(p.processingStockWeightKg || 0).toFixed(6))} kg</Text>
             <Text type="secondary">processing stock</Text>
           </div>
+        ) : isWeightUnit(p.unit) && Number((p as any).avgWeightG) > 0 ? (
+          <div style={{ display: "grid", gap: 2 }}>
+            <Text>{p.stockQty} packs</Text>
+            <Text>{Math.max(0, p.stockQty * Number((p as any).avgWeightG) / 1000 - Number((p as any).posPartialWeightKg || 0)).toFixed(3)} kg</Text>
+            <Text type="secondary">from average pack weight</Text>
+          </div>
         ) : p.stockQty,
     },
     {

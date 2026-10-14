@@ -1,3 +1,4 @@
+import StockAuditLog from "./StockAuditLog";
 import WhatsAppSettings from "./WhatsAppSettings";
 import React, { useEffect, useState } from "react";
 import { Alert, Anchor, Button, Card, Col, Form, Input, Row, Skeleton, Typography, message } from "antd";
@@ -74,6 +75,7 @@ export default function SettingsTab({ loading, windows, onReload, permissions, u
       </Card>
     </nav>
     <div className="aca-settings__sections">
+    {canViewWindows && <Card title="Stock history"><StockAuditLog /></Card>}
     {canViewWindows && <section id="settings-whatsapp" aria-label="WhatsApp"><WhatsAppSettings canManage={canManage} /></section>}
     {canViewWindows && <section id="settings-delivery-note" aria-label="Delivery-note details">
     <Card title="Delivery-note details">
