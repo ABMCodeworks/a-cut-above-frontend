@@ -52,6 +52,7 @@ export type AdminProduct = {
   discountStartsAt?: string | null;
   discountExpiresAt?: string | null;
   stockQty: number;
+  posPartialWeightKg?: string | number;
   processingStockWeightKg?: string | number;
   isActive: boolean;
   isHiddenFromShop?: boolean;

@@ -240,10 +240,13 @@ export default function DashboardTab({
       const categoryKey = product.category?.id || "unassigned";
       const unit = String(product.unit || "").toLowerCase();
       const avgWeightKg = n(product.avgWeightG) > 0 ? n(product.avgWeightG) / 1000 : 1;
+      const partialWeightKg = product.isForProcessing ? 0 : Math.max(0, n(product.posPartialWeightKg));
       const stockUnits =
         product.isForProcessing && unit === "kg" && n(product.processingStockWeightKg) > 0
           ? n(product.processingStockWeightKg)
-          : stockQty * (unit === "kg" ? avgWeightKg : 1);
+          : unit === "kg"
+            ? Math.max(0, stockQty * avgWeightKg - partialWeightKg)
+            : stockQty;
       const row = rows.get(categoryKey) || {
         key: categoryKey,
         categoryName,
