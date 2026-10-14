@@ -142,24 +142,33 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
             {lines.map(line => {
               const product = products.find(p => p.id === line.productId);
               if (!product) return <Alert key={line.productId} type="error" title="Product no longer available" action={<Button disabled={locked} onClick={() => setLines(lines.filter(l => l.productId !== line.productId))}>Remove</Button>} />;
-              return <Card className="pos-line" size="small" key={product.id} title={product.name} extra={<Button aria-label={`Remove ${product.name}`} icon={<DeleteOutlined />} disabled={locked} onClick={() => setLines(current => current.filter(l => l.productId !== product.id))} />}>
-                <Space wrap style={{ marginBottom: 12 }}>
-                  <Tag>{stockLabel(product)} in stock</Tag>
-                  {product.isHiddenFromShop && <Tag color="gold">Hidden from shop</Tag>}
-                  {!product.isActive && <Tag>Inactive</Tag>}
-                  {product.isForProcessing && <Tag color="blue">{Number(product.processingStockWeightKg)} kg processing stock</Tag>}
-                </Space>
-                <Row gutter={[12, 12]}>
-                  <Col xs={24} sm={12}>
-                    <label style={{ display: "block", marginBottom: 6 }}>{weighed(product) ? "Kg sold" : "Number of packs"}</label>
+              return <Card className="pos-line" size="small" key={product.id}>
+                <div className="pos-line-row">
+                  <div className="pos-line-product">
+                    <label>Product</label>
+                    <Text strong className="pos-line-name">{product.name}</Text>
+                    <Space wrap size={[4, 4]} className="pos-line-tags">
+                      <Tag>{stockLabel(product)} in stock</Tag>
+                      {product.isHiddenFromShop && <Tag color="gold">Hidden from shop</Tag>}
+                      {!product.isActive && <Tag>Inactive</Tag>}
+                      {product.isForProcessing && <Tag color="blue">Processing</Tag>}
+                    </Space>
+                  </div>
+                  <div className="pos-line-quantity">
+                    <label>{weighed(product) ? "Kg sold" : "Number of packs"}</label>
                     <InputNumber aria-label={`Quantity sold: ${product.name}`} min={weighed(product) ? 0.001 : 1} max={weighed(product) ? availableKg(product) : product.stockQty} precision={weighed(product) ? 3 : 0} step={weighed(product) ? 0.1 : 1} value={weighed(product) ? line.weightKg : line.qty} onChange={value => updateLine(product.id, weighed(product) ? { weightKg: value } : { qty: value })} disabled={locked} style={{ width: "100%" }} />
-                  </Col>
-                  <Col xs={24} sm={12}>
-                    <label style={{ display: "block", marginBottom: 6 }}>Product discount (%)</label>
+                  </div>
+                  <div className="pos-line-total">
+                    <label>Product total</label>
+                    <Text strong>{money(lineValue(line, product))}</Text>
+                    <Text type="secondary">{money(defaultPrice(product))} / {weighed(product) ? "kg" : "pack"}</Text>
+                  </div>
+                  <div className="pos-line-discount">
+                    <label>Product discount (%)</label>
                     <InputNumber aria-label={`Discount: ${product.name}`} min={0} max={100} precision={2} value={line.discountPercent} onChange={value => updateLine(product.id, { discountPercent: value || 0 })} disabled={locked} style={{ width: "100%" }} />
-                  </Col>
-                </Row>
-                <div className="pos-line-total"><Text type="secondary">{weighed(product) ? `${line.weightKg || 0} kg` : `${line.qty || 0} packs`} × {money(defaultPrice(product))}{line.discountPercent > 0 ? ` · ${line.discountPercent}% discount` : ""}</Text><Text strong>{money(lineValue(line, product))}</Text></div>
+                  </div>
+                  <Button className="pos-line-remove" aria-label={`Remove ${product.name}`} icon={<DeleteOutlined />} disabled={locked} onClick={() => setLines(current => current.filter(l => l.productId !== product.id))} />
+                </div>
                 {issue(line, product) && <div className="pos-line-hint">{issue(line, product)}</div>}
 
               </Card>;
