@@ -158,14 +158,14 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
                     <label>{weighed(product) ? "Kg sold" : "Number of packs"}</label>
                     <InputNumber aria-label={`Quantity sold: ${product.name}`} min={weighed(product) ? 0.001 : 1} max={weighed(product) ? availableKg(product) : product.stockQty} precision={weighed(product) ? 3 : 0} step={weighed(product) ? 0.1 : 1} value={weighed(product) ? line.weightKg : line.qty} onChange={value => updateLine(product.id, weighed(product) ? { weightKg: value } : { qty: value })} disabled={locked} style={{ width: "100%" }} />
                   </div>
+                  <div className="pos-line-discount">
+                    <label>Product discount (%)</label>
+                    <InputNumber aria-label={`Discount: ${product.name}`} min={0} max={100} precision={2} value={line.discountPercent} onChange={value => updateLine(product.id, { discountPercent: value || 0 })} disabled={locked} style={{ width: "100%" }} />
+                  </div>
                   <div className="pos-line-total">
                     <label>Product total</label>
                     <Text strong>{money(lineValue(line, product))}</Text>
                     <Text type="secondary">{money(defaultPrice(product))} / {weighed(product) ? "kg" : "pack"}</Text>
-                  </div>
-                  <div className="pos-line-discount">
-                    <label>Product discount (%)</label>
-                    <InputNumber aria-label={`Discount: ${product.name}`} min={0} max={100} precision={2} value={line.discountPercent} onChange={value => updateLine(product.id, { discountPercent: value || 0 })} disabled={locked} style={{ width: "100%" }} />
                   </div>
                   <Button className="pos-line-remove" aria-label={`Remove ${product.name}`} icon={<DeleteOutlined />} disabled={locked} onClick={() => setLines(current => current.filter(l => l.productId !== product.id))} />
                 </div>
