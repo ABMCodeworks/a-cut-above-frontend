@@ -972,6 +972,7 @@ export default function OrdersTab({
   const [amendItem, setAmendItem] = useState<AdminOrderItem | null>(null);
   const [amendQty, setAmendQty] = useState<number>(0);
   const [amendReason, setAmendReason] = useState("");
+  const [amendStockAction, setAmendStockAction] = useState<RemovedStockAction>("UNAVAILABLE");
   const [savingAmend, setSavingAmend] = useState(false);
 
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
@@ -1487,6 +1488,7 @@ export default function OrdersTab({
     setAmendItem(item);
     setAmendQty(Math.max(0, Math.round(Number((item as any).qty || 0))));
     setAmendReason("");
+    setAmendStockAction("UNAVAILABLE");
   }
 
   async function confirmAmendOrderItem() {
@@ -1508,7 +1510,7 @@ export default function OrdersTab({
     try {
       const res = await api.put(
         `/api/admin/orders/${amendOrder.id}/items/${amendItem.id}`,
-        { qty: cleanQty, notes: amendReason.trim() },
+        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: amendStockAction },
       );
       const updated = res.data?.order as AdminOrder;
 
@@ -1521,7 +1523,7 @@ export default function OrdersTab({
       );
 
       message.success(
-        cleanQty === 0 ? "Item marked out of stock" : "Order quantity amended",
+        amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; removed reserved packs returned to stock",
       );
       setAmendOrder(null);
       setAmendItem(null);
@@ -3107,7 +3109,7 @@ export default function OrdersTab({
           setAmendReason("");
         }}
         onOk={confirmAmendOrderItem}
-        okText={amendQty === 0 ? "Mark Out of Stock" : "Save Quantity"}
+        okText={amendQty === 0 ? amendStockAction === "UNAVAILABLE" ? "Mark Unavailable" : "Remove Item" : "Save Quantity"}
         confirmLoading={savingAmend}
       >
         {amendItem ? (
@@ -3116,7 +3118,7 @@ export default function OrdersTab({
               type="info"
               showIcon
               message="Reduce the order quantity"
-              description="Reducing the quantity updates the order total. Packs already reserved for this order are automatically returned to available stock."
+              description="Choose unavailable for missing packs, or return to stock for packs that are physically available. Only previously reserved packs can be returned to stock."
             />
 
             <div>
@@ -3140,6 +3142,17 @@ export default function OrdersTab({
                 Set to 0 to mark this item out of stock. Current quantity:{" "}
                 {Number((amendItem as any).qty || 0)}
               </Text>
+            </div>
+
+            <div>
+              <Text type="secondary">What happened to the removed packs?</Text>
+              <Select<RemovedStockAction>
+                aria-label="Stock handling for reduced order quantity"
+                value={amendStockAction}
+                onChange={setAmendStockAction}
+                options={REMOVED_STOCK_OPTIONS}
+                style={{ width: "100%", marginTop: 6 }}
+              />
             </div>
 
             <div>
