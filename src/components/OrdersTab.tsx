@@ -972,7 +972,6 @@ export default function OrdersTab({
   const [amendItem, setAmendItem] = useState<AdminOrderItem | null>(null);
   const [amendQty, setAmendQty] = useState<number>(0);
   const [amendReason, setAmendReason] = useState("");
-  const [amendStockAction, setAmendStockAction] = useState<RemovedStockAction>("UNAVAILABLE");
   const [savingAmend, setSavingAmend] = useState(false);
 
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
@@ -1488,7 +1487,6 @@ export default function OrdersTab({
     setAmendItem(item);
     setAmendQty(Math.max(0, Math.round(Number((item as any).qty || 0))));
     setAmendReason("");
-    setAmendStockAction("UNAVAILABLE");
   }
 
   async function confirmAmendOrderItem() {
@@ -1500,14 +1498,17 @@ export default function OrdersTab({
     );
     const cleanQty = Math.max(0, Math.round(Number(amendQty || 0)));
 
-    const increasing = cleanQty > currentQty;
+    if (cleanQty > currentQty) {
+      message.error(`Quantity can only be reduced from ${currentQty}`);
+      return;
+    }
 
     setSavingAmend(true);
 
     try {
       const res = await api.put(
         `/api/admin/orders/${amendOrder.id}/items/${amendItem.id}`,
-        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: increasing ? undefined : amendStockAction, expectedUpdatedAt: amendOrder.updatedAt },
+        { qty: cleanQty, notes: amendReason.trim() },
       );
       const updated = res.data?.order as AdminOrder;
 
@@ -1520,7 +1521,7 @@ export default function OrdersTab({
       );
 
       message.success(
-        increasing ? "Quantity increased; order is ready to pack" : amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; reserved packs returned to stock",
+        cleanQty === 0 ? "Item marked out of stock" : "Order quantity amended",
       );
       setAmendOrder(null);
       setAmendItem(null);
@@ -3106,7 +3107,7 @@ export default function OrdersTab({
           setAmendReason("");
         }}
         onOk={confirmAmendOrderItem}
-        okText={amendQty === 0 ? amendStockAction === "UNAVAILABLE" ? "Mark Unavailable" : "Remove Item" : "Save Quantity"}
+        okText={amendQty === 0 ? "Mark Out of Stock" : "Save Quantity"}
         confirmLoading={savingAmend}
       >
         {amendItem ? (
@@ -3114,8 +3115,8 @@ export default function OrdersTab({
             <Alert
               type="info"
               showIcon
-              message="Increase or reduce the order quantity"
-              description="Extra packs are deducted from reserved stock and the order returns to Ready to Pack. Unreserved orders deduct stock when packed. For reductions, choose unavailable for missing packs or return packs that are physically available."
+              message="Reduce the order quantity"
+              description="Reducing the quantity updates the order total. Packs already reserved for this order are automatically returned to available stock."
             />
 
             <div>
@@ -3129,27 +3130,17 @@ export default function OrdersTab({
               <Text type="secondary">New quantity</Text>
               <InputNumber
                 min={0}
+                max={Math.max(0, Number((amendItem as any).qty || 0))}
                 precision={0}
                 value={amendQty}
                 onChange={(value) => setAmendQty(Number(value ?? 0))}
                 style={{ width: "100%", marginTop: 6 }}
               />
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Enter a larger quantity to add packs, or 0 to remove the item. Current quantity:{" "}
+                Set to 0 to mark this item out of stock. Current quantity:{" "}
                 {Number((amendItem as any).qty || 0)}
               </Text>
             </div>
-
-            {amendQty < Number(amendItem.qty) && <div>
-              <Text type="secondary">What happened to the removed packs?</Text>
-              <Select<RemovedStockAction>
-                aria-label="Stock handling for reduced order quantity"
-                value={amendStockAction}
-                onChange={setAmendStockAction}
-                options={REMOVED_STOCK_OPTIONS}
-                style={{ width: "100%", marginTop: 6 }}
-              />
-            </div>}
 
             <div>
               <Text type="secondary">Reason (optional)</Text>
