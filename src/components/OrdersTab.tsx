@@ -113,6 +113,12 @@ type CreateOrderItem = {
   qty: number;
 };
 
+type RemovedStockAction = "UNAVAILABLE" | "RETURN_TO_STOCK";
+const REMOVED_STOCK_OPTIONS = [
+  { value: "UNAVAILABLE", label: "Unavailable / missing — do not add to stock" },
+  { value: "RETURN_TO_STOCK", label: "Packs are available — return to stock" },
+];
+
 function activeProductDiscount(product?: AdminCreateProduct) {
   const now = Date.now();
   const start = product?.discountStartsAt ? new Date(product.discountStartsAt).getTime() : null;
@@ -963,10 +969,12 @@ export default function OrdersTab({
   const [amendItem, setAmendItem] = useState<AdminOrderItem | null>(null);
   const [amendQty, setAmendQty] = useState<number>(0);
   const [amendReason, setAmendReason] = useState("");
+  const [amendStockAction, setAmendStockAction] = useState<RemovedStockAction>("UNAVAILABLE");
   const [savingAmend, setSavingAmend] = useState(false);
 
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<AdminOrder | null>(null);
+  const [removedStockAction, setRemovedStockAction] = useState<RemovedStockAction>();
   const [adminProducts, setAdminProducts] = useState<AdminCreateProduct[]>([]);
   const [savingCreateOrder, setSavingCreateOrder] = useState(false);
   const [createCustomerName, setCreateCustomerName] = useState("");
@@ -987,6 +995,13 @@ export default function OrdersTab({
   const [createItems, setCreateItems] = useState<CreateOrderItem[]>([
     { productId: "", qty: 1 },
   ]);
+
+  const reducedOrderItems = (editingOrder?.items || []).flatMap(item => {
+    const nextQty = createItems.filter(row => row.productId === item.productId)
+      .reduce((total, row) => total + Math.max(0, Number(row.qty || 0)), 0);
+    const removed = Math.ceil(Number(item.qty)) - Math.ceil(nextQty);
+    return removed > 0 ? [{ productName: item.productName, removed }] : [];
+  });
 
   useEffect(() => {
     const normalized = (orders || []).map((o) => ({
@@ -1296,6 +1311,7 @@ export default function OrdersTab({
 
   function openOrderEditor(order: AdminOrder | null) {
     setEditingOrder(order);
+    setRemovedStockAction(undefined);
     setCreateOrderDiscountPercent(Number((order as any)?.orderDiscountPercent || 0));
     setCreateCustomerName(order?.customerName || "");
     setCreateCustomerPhone(order?.customerPhone || "");
@@ -1460,6 +1476,7 @@ export default function OrdersTab({
     setAmendItem(item);
     setAmendQty(Math.max(0, Math.round(Number((item as any).qty || 0))));
     setAmendReason("");
+    setAmendStockAction("UNAVAILABLE");
   }
 
   async function confirmAmendOrderItem() {
@@ -1481,7 +1498,7 @@ export default function OrdersTab({
     try {
       const res = await api.put(
         `/api/admin/orders/${amendOrder.id}/items/${amendItem.id}`,
-        { qty: cleanQty, notes: amendReason.trim() },
+        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: amendStockAction, expectedUpdatedAt: amendOrder.updatedAt },
       );
       const updated = res.data?.order as AdminOrder;
 
@@ -1494,7 +1511,7 @@ export default function OrdersTab({
       );
 
       message.success(
-        cleanQty === 0 ? "Item marked out of stock" : "Order quantity amended",
+        amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; reserved packs returned to stock",
       );
       setAmendOrder(null);
       setAmendItem(null);
@@ -1796,6 +1813,10 @@ export default function OrdersTab({
       message.error("Add each product only once and adjust its quantity");
       return;
     }
+    if (reducedOrderItems.length && !removedStockAction) {
+      message.error("Choose whether the removed packs are unavailable or can be returned to stock.");
+      return;
+    }
     if ([createOrderDiscountPercent, ...validItems.map(item => item.productDiscountPercent ?? 0)].some(value => !Number.isFinite(value) || value < 0 || value > 100)) {
       message.error("Discounts must be between 0 and 100 percent");
       return;
@@ -1804,6 +1825,8 @@ export default function OrdersTab({
 
     try {
       const payload = {
+        expectedUpdatedAt: editingOrder?.updatedAt,
+        removedStockAction: reducedOrderItems.length ? removedStockAction : undefined,
         customerName: createCustomerName.trim(),
         customerPhone: createCustomerPhone.trim(),
         customerEmail: createCustomerEmail.trim(),
@@ -1846,6 +1869,7 @@ export default function OrdersTab({
 
       onReload();
     } catch (e: any) {
+      if (editingOrder && e?.response?.status === 409) onReload();
       message.error(
         e?.response?.data?.error ||
           (editingOrder ? "Failed to update order" : "Failed to create order"),
@@ -3073,7 +3097,7 @@ export default function OrdersTab({
           setAmendReason("");
         }}
         onOk={confirmAmendOrderItem}
-        okText={amendQty === 0 ? "Mark Out of Stock" : "Save Quantity"}
+        okText={amendQty === 0 ? amendStockAction === "UNAVAILABLE" ? "Mark Unavailable" : "Remove Item" : "Save Quantity"}
         confirmLoading={savingAmend}
       >
         {amendItem ? (
@@ -3081,8 +3105,8 @@ export default function OrdersTab({
             <Alert
               type="info"
               showIcon
-              message="Correct an unavailable quantity"
-              description="Reduce the quantity when the physical stock is lower than expected. This updates the order total but does not add the unavailable units back into stock."
+              message="Reduce the order quantity"
+              description="Choose unavailable for missing packs. Only return packs to stock when they are physically available. Unreserved wholesale packs have not been deducted, so reducing those orders does not return stock."
             />
 
             <div>
@@ -3106,6 +3130,17 @@ export default function OrdersTab({
                 Set to 0 to mark this item out of stock. Current quantity:{" "}
                 {Number((amendItem as any).qty || 0)}
               </Text>
+            </div>
+
+            <div>
+              <Text type="secondary">What happened to the removed packs?</Text>
+              <Select<RemovedStockAction>
+                aria-label="Stock handling for reduced order quantity"
+                value={amendStockAction}
+                onChange={setAmendStockAction}
+                options={REMOVED_STOCK_OPTIONS}
+                style={{ width: "100%", marginTop: 6 }}
+              />
             </div>
 
             <div>
@@ -3188,7 +3223,7 @@ export default function OrdersTab({
             }
             description={
               editingOrder
-                ? "Changing products, quantities, or pricing will reset this order to Ready to Pack and clear its previous packing details."
+                ? "Changes may require packing again. Existing weights are retained where possible. When reducing or removing packs, choose whether they are unavailable or can be returned to stock."
                 : "Use this for phone, WhatsApp, or in-person orders that were not placed through the online shop. The order enters the same packing and delivery workflow."
             }
           />
@@ -3403,6 +3438,25 @@ export default function OrdersTab({
                 </div>
               </Card>
             ))}
+            {reducedOrderItems.length > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Choose what happens to the removed packs"
+                description={<div style={{ display: "grid", gap: 8 }}>
+                  <Text>{reducedOrderItems.map(item => `${item.productName}: ${item.removed} pack(s)`).join(", ")}</Text>
+                  <Select<RemovedStockAction>
+                    aria-label="Stock handling for removed order packs"
+                    placeholder="Select unavailable or return to stock"
+                    value={removedStockAction}
+                    onChange={setRemovedStockAction}
+                    options={REMOVED_STOCK_OPTIONS}
+                    style={{ width: "100%" }}
+                  />
+                  <Text>Unavailable packs will not be added to stock. Return packs only if they are physically available and were reserved for this order. This choice applies to all reductions in this save.</Text>
+                </div>}
+              />
+            )}
             <label>
               <Text strong>Whole-order discount (%)</Text>
               <InputNumber
