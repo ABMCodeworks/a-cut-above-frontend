@@ -1500,17 +1500,14 @@ export default function OrdersTab({
     );
     const cleanQty = Math.max(0, Math.round(Number(amendQty || 0)));
 
-    if (cleanQty > currentQty) {
-      message.error(`Quantity can only be reduced from ${currentQty}`);
-      return;
-    }
+    const increasing = cleanQty > currentQty;
 
     setSavingAmend(true);
 
     try {
       const res = await api.put(
         `/api/admin/orders/${amendOrder.id}/items/${amendItem.id}`,
-        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: amendStockAction, expectedUpdatedAt: amendOrder.updatedAt },
+        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: increasing ? undefined : amendStockAction, expectedUpdatedAt: amendOrder.updatedAt },
       );
       const updated = res.data?.order as AdminOrder;
 
@@ -1523,7 +1520,7 @@ export default function OrdersTab({
       );
 
       message.success(
-        amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; reserved packs returned to stock",
+        increasing ? "Quantity increased; order is ready to pack" : amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; reserved packs returned to stock",
       );
       setAmendOrder(null);
       setAmendItem(null);
@@ -3117,8 +3114,8 @@ export default function OrdersTab({
             <Alert
               type="info"
               showIcon
-              message="Reduce the order quantity"
-              description="Choose unavailable for missing packs. Only return packs to stock when they are physically available. Unreserved wholesale packs have not been deducted, so reducing those orders does not return stock."
+              message="Increase or reduce the order quantity"
+              description="Extra packs are deducted from reserved stock and the order returns to Ready to Pack. Unreserved orders deduct stock when packed. For reductions, choose unavailable for missing packs or return packs that are physically available."
             />
 
             <div>
@@ -3132,19 +3129,18 @@ export default function OrdersTab({
               <Text type="secondary">New quantity</Text>
               <InputNumber
                 min={0}
-                max={Math.max(0, Number((amendItem as any).qty || 0))}
                 precision={0}
                 value={amendQty}
                 onChange={(value) => setAmendQty(Number(value ?? 0))}
                 style={{ width: "100%", marginTop: 6 }}
               />
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Set to 0 to mark this item out of stock. Current quantity:{" "}
+                Enter a larger quantity to add packs, or 0 to remove the item. Current quantity:{" "}
                 {Number((amendItem as any).qty || 0)}
               </Text>
             </div>
 
-            <div>
+            {amendQty < Number(amendItem.qty) && <div>
               <Text type="secondary">What happened to the removed packs?</Text>
               <Select<RemovedStockAction>
                 aria-label="Stock handling for reduced order quantity"
@@ -3153,7 +3149,7 @@ export default function OrdersTab({
                 options={REMOVED_STOCK_OPTIONS}
                 style={{ width: "100%", marginTop: 6 }}
               />
-            </div>
+            </div>}
 
             <div>
               <Text type="secondary">Reason (optional)</Text>
