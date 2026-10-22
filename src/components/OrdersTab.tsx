@@ -38,6 +38,7 @@ import {
 import dayjs from "dayjs";
 import writeXlsxFile from "write-excel-file/browser";
 
+import { useSearchParams } from "../lib/router";
 import { matchesOrderSearch } from "../lib/orderSearch";
 import { api, API_BASE } from "../api/client";
 import type {
@@ -927,6 +928,8 @@ export default function OrdersTab({
     "ALL" | "RETAIL" | "WHOLESALE"
   >("ALL");
 
+  const [auditSearchParams] = useSearchParams();
+  const auditOrderId = auditSearchParams.get("orderId");
   const [orderSearch, setOrderSearch] = useState("");
   const [filterLocationId, setFilterLocationId] = useState("");
   const [filterScheduleId, setFilterScheduleId] = useState("");
@@ -1011,6 +1014,15 @@ export default function OrdersTab({
 
     setDisplayOrders(normalized);
   }, [orders]);
+
+  useEffect(() => {
+    const order = auditOrderId ? orders.find(order => order.id === auditOrderId) : null;
+    if (!order) return;
+    setOrderSearch(order.orderNo);
+    setOrderView(order.status === "DELIVERED" ? "archive" : "active");
+    setFilterLocationId(""); setFilterScheduleId(""); setPurchaseTypeFilter("ALL");
+    setExpandedRowKeys([order.id]);
+  }, [auditOrderId, orders]);
 
   useEffect(() => {
     api

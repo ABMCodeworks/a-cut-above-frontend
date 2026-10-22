@@ -39,6 +39,7 @@ type ProductForm = {
   wholesalePrice: number;
   costPrice: number;
   stockQty: number;
+  stockCorrectionReason?: string;
   processingStockWeightKg: number;
   isActive: boolean;
   isHiddenFromShop: boolean;
@@ -58,6 +59,7 @@ type WasteForm = {
 };
 
 type ProcessingStockAdjustmentForm = {
+  reason: string;
   action: "ADD" | "REMOVE";
   packetCount: number;
   totalWeightKg: number;
@@ -528,6 +530,7 @@ export default function ProductsTab({
           ...payload,
           stockQty: values.stockQty === editingProduct.stockQty ? undefined : values.stockQty,
           expectedStockQty: editingProduct.stockQty,
+          stockCorrectionReason: values.stockCorrectionReason?.trim(),
           processingStockWeightKg: payload.processingStockWeightKg === Number(editingProduct.processingStockWeightKg || 0)
             ? undefined : payload.processingStockWeightKg,
           expectedProcessingStockWeightKg: Number(editingProduct.processingStockWeightKg || 0),
@@ -1316,6 +1319,18 @@ export default function ProductsTab({
             </Form.Item>
           ) : null}
 
+          {editingProduct && <Form.Item
+            name="stockCorrectionReason"
+            label="Reason for stock correction"
+            dependencies={["stockQty", "processingStockWeightKg", "isForProcessing"]}
+            extra="Required when correcting pack counts or processing weight. Saved in the stock audit."
+            rules={[{ max: 500 }, ({ getFieldValue }) => ({ validator(_, value) {
+              const weight = getFieldValue("isForProcessing") ? Number(getFieldValue("processingStockWeightKg") || 0) : 0;
+              const changed = getFieldValue("stockQty") !== editingProduct.stockQty || weight !== Number(editingProduct.processingStockWeightKg || 0);
+              return changed && !String(value || "").trim() ? Promise.reject(new Error("Enter a reason for changing stock")) : Promise.resolve();
+            } })]}
+          ><Input.TextArea rows={2} maxLength={500} placeholder="e.g. Physical count found 2 packs; corrected overstatement" /></Form.Item>}
+
           <Form.Item name="categoryId" label="Category">
             <Select
               allowClear
@@ -1561,6 +1576,7 @@ export default function ProductsTab({
               </Space>
             </Card>
           ) : null}
+          <Form.Item name="reason" label="Reason for adjustment" rules={[{ required: true, whitespace: true }, { max: 500 }]}><Input.TextArea rows={2} maxLength={500} /></Form.Item>
           <Form.Item name="action" label="Adjustment" rules={[{ required: true }]}>
             <Select
               options={[
