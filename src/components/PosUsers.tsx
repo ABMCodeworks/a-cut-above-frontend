@@ -50,7 +50,7 @@ export default function PosUsers({ canManage }: { canManage: boolean }) {
     <Modal title={editing ? "Edit POS user" : "Create POS user"} open={open} onCancel={() => setOpen(false)} onOk={save} confirmLoading={saving} okText={editing ? "Save" : "Create user"}>
       <Form form={form} layout="vertical">
         <Form.Item name="username" label="Username" rules={[{ required: true }, { pattern: /^[a-zA-Z0-9][a-zA-Z0-9._-]{2,39}$/, message: "Use 3–40 letters, digits, dots, hyphens or underscores" }]}><Input autoComplete="off" autoCapitalize="none" /></Form.Item>
-        <Form.Item name="password" label={editing ? "New password (leave blank to keep current)" : "Password"} rules={[{ required: !editing }, { min: 12, message: "Use at least 12 characters" }, { validator: (_, value) => !value || new TextEncoder().encode(value).length <= 72 ? Promise.resolve() : Promise.reject(new Error("Maximum 72 bytes")) }]}><Input.Password autoComplete="new-password" /></Form.Item>
+        <Form.Item name="password" label={editing ? "New password (leave blank to keep current)" : "Password"} rules={[{ required: !editing }, { min: 8, message: "Use at least 8 characters" }, { validator: (_, value) => !value || new TextEncoder().encode(value).length <= 72 ? Promise.resolve() : Promise.reject(new Error("Maximum 72 bytes")) }]}><Input.Password autoComplete="new-password" /></Form.Item>
         {editing && <Alert type="info" title="Saving changes signs this user out of existing POS sessions." />}
       </Form>
     </Modal>

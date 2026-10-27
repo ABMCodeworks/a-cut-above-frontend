@@ -5,6 +5,7 @@ import { Link, Route, Routes, useLocation, useNavigate } from "./lib/router";
 import { Button, Layout, Space, Spin, message } from "antd";
 import { CartProvider } from "./context/CartContext";
 import { api } from "./api/client";
+import logo from "./assets/logo.webp";
 
 import TopBar from "./components/TopBar";
 import Seo from "./components/Seo";
@@ -88,7 +89,7 @@ export default function App() {
       <Seo />
       <Layout style={{ minHeight: "100vh" }}>
         <Suspense fallback={<Spin aria-label="Loading staff navigation" />}>
-        {isPosRoute ? <div className="aca-header"><div className="aca-header__inner"><strong>A CUT ABOVE · POS</strong></div></div> : isAdminRoute ? (
+        {isPosRoute ? <div className="aca-header"><div className="aca-header__inner"><div className="aca-brand"><img src={logo} alt="A Cut Above Meats" className="aca-brand__logo" /><strong>A CUT ABOVE · POS</strong></div></div></div> : isAdminRoute ? (
           <AdminTopBar
             onRefresh={refreshAdmin}
             isAuthed={adminAuthed}

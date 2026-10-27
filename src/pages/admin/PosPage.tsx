@@ -34,10 +34,10 @@ export default function PosPage() {
   </>;
   return <Card title="POS sign in" style={{ maxWidth: 440, margin: "48px auto" }}>
     <img src={logo} alt="A Cut Above Meats" style={{ display: "block", width: 160, maxWidth: "100%", height: "auto", margin: "0 auto 24px" }} />
-    <Typography.Paragraph>Sign in with the username and password provided by your administrator.</Typography.Paragraph>
+    <Typography.Paragraph>Sign in with your POS username or admin email and password.</Typography.Paragraph>
     <Form layout="vertical" onFinish={login} disabled={saving}>
       {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
-      <Form.Item name="username" label="Username" rules={[{ required: true }]}><Input autoComplete="username" autoCapitalize="none" spellCheck={false} /></Form.Item>
+      <Form.Item name="username" label="Username or admin email" rules={[{ required: true }]}><Input autoComplete="username" autoCapitalize="none" spellCheck={false} /></Form.Item>
       <Form.Item name="password" label="Password" rules={[{ required: true }]}><Input.Password autoComplete="current-password" /></Form.Item>
       <Button block type="primary" htmlType="submit" loading={saving}>Sign in to POS</Button>
     </Form>
