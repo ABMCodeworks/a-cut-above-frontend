@@ -15,6 +15,7 @@ import {
   Typography,
   message,
 } from "antd";
+import PosUsers from "./PosUsers";
 import { api } from "../api/client";
 import type {
   AdminPermission,
@@ -306,6 +307,7 @@ export default function UsersTab({
   ];
 
   return (
+    <>
     <Card
       title="Users"
       extra={
@@ -403,5 +405,7 @@ export default function UsersTab({
         </Form>
       </Modal>
     </Card>
+    <PosUsers canManage={canManageUsers} />
+    </>
   );
 }

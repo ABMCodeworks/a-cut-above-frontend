@@ -89,7 +89,7 @@ export default function AdminLoginPage() {
             </Form>}
           <div className="aca-login__help">
             {setupAvailable ? <><strong>Setting up for the first time?</strong><Link to="/admin/setup">Create your first admin account <ArrowRightOutlined aria-hidden="true" /></Link></> :
-              <><strong>Need access?</strong><p>Ask your administrator for an invitation link and access code.</p></>}
+              <><Link to="/sales/pos">POS staff sign in <ArrowRightOutlined aria-hidden="true" /></Link><strong>Need access?</strong><p>Ask your administrator for an invitation link and access code.</p></>}
           </div>
         </section>
       </div>

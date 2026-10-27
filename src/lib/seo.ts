@@ -74,6 +74,7 @@ export const pages: Record<string, Page> = {
     heading: "Privacy Choices & Data Rights",
     index: false,
   },
+  "/sales/pos": { title: "POS Sign In | A Cut Above Meats", description: "Authorised POS staff access only.", heading: "POS Sign In", index: false },
   "/admin": {
     title: "Admin Sign In | A Cut Above Meats",
     description: "Authorised staff access only.",

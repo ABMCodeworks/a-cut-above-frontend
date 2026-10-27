@@ -8,7 +8,7 @@ const preview = process.env.SEO_EXPECT_NOINDEX === "1";
 const read = (file) => readFile(resolve(dist, file), "utf8");
 const origin = "https://acutabovemeats.co.zw";
 const publicPages = ["", "about", "contact", "privacy", "cookie-policy", "terms"];
-const privatePages = ["admin", "admin/setup", "admin/register", "admin/dashboard", "checkout", "track", "track-order", "wholesale", "privacy-rights", "404"];
+const privatePages = ["sales/pos", "admin", "admin/setup", "admin/register", "admin/dashboard", "checkout", "track", "track-order", "wholesale", "privacy-rights", "404"];
 
 test("public pages have unique static metadata, canonical URLs and readable content", async () => {
   const titles = new Set();

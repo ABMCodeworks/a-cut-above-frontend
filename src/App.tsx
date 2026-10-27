@@ -24,6 +24,7 @@ import {
 } from "./pages/public/LegalPages";
 import PrivacyPreferencesBanner from "./components/PrivacyPreferencesBanner";
 
+const PosPage = lazy(() => import("./pages/admin/PosPage"));
 const AdminTopBar = lazy(() => import("./components/AdminTopBar"));
 const AdminSetupPage = lazy(() => import("./pages/admin/AdminSetupPage"));
 const AdminLoginPage = lazy(() => import("./pages/admin/AdminLoginPage"));
@@ -35,6 +36,8 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+
+  const isPosRoute = location.pathname === "/sales/pos";
 
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [checkingAdminAuth, setCheckingAdminAuth] = useState(true);
@@ -85,7 +88,7 @@ export default function App() {
       <Seo />
       <Layout style={{ minHeight: "100vh" }}>
         <Suspense fallback={<Spin aria-label="Loading staff navigation" />}>
-        {isAdminRoute ? (
+        {isPosRoute ? <div className="aca-header"><div className="aca-header__inner"><strong>A CUT ABOVE · POS</strong></div></div> : isAdminRoute ? (
           <AdminTopBar
             onRefresh={refreshAdmin}
             isAuthed={adminAuthed}
@@ -101,7 +104,7 @@ export default function App() {
         <Content
           style={{
             padding: 24,
-            maxWidth: isAdminRoute ? 1800 : 1280,
+            maxWidth: isAdminRoute || isPosRoute ? 1800 : 1280,
             margin: "0 auto",
             width: "100%",
           }}
@@ -126,6 +129,7 @@ export default function App() {
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy-rights" element={<PrivacyRightsPage />} />
 
+            <Route path="/sales/pos" element={<PosPage />} />
             <Route path="/admin" element={<AdminLoginPage />} />
             <Route path="/admin/setup" element={<AdminSetupPage initial />} />
             <Route path="/admin/register" element={<AdminSetupPage />} />
@@ -142,7 +146,7 @@ export default function App() {
           </Suspense>
         </Content>
 
-        <Footer style={{ textAlign: "center" }}>
+        {!isPosRoute && <Footer style={{ textAlign: "center" }}>
           <Space wrap split={<span aria-hidden="true">·</span>} style={{ justifyContent: "center" }}>
             <span>A Cut Above © {new Date().getFullYear()}</span>
             <Link to="/privacy">Privacy</Link>
@@ -158,8 +162,8 @@ export default function App() {
               Manage preferences
             </Button>
           </Space>
-        </Footer>
-        {!isAdminRoute ? <PrivacyPreferencesBanner /> : null}
+        </Footer>}
+        {!isAdminRoute && !isPosRoute ? <PrivacyPreferencesBanner /> : null}
       </Layout>
     </CartProvider>
   );

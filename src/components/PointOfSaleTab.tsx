@@ -27,7 +27,7 @@ const availableKg = (p: Product) => p.isForProcessing ? Number(p.processingStock
 const stockLabel = (p: Product) => weighed(p) ? `${availableKg(p).toFixed(3)} kg${!p.isForProcessing ? " (from average pack weight)" : ""}` : `${p.stockQty} packs`;
 const money = (n: number | string) => `$${Number(n).toFixed(2)}`;
 
-export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => void }) {
+export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos", onSessionExpired }: { onCompleted: () => void; apiPath?: string; onSessionExpired?: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -62,8 +62,8 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
   async function loadProducts() {
     setLoading(true);
     setLoadError(false);
-    try { const { data } = await api.get("/api/admin/pos/products"); setProducts(data.products); }
-    catch { setLoadError(true); }
+    try { const { data } = await api.get(`${apiPath}/products`); setProducts(data.products); }
+    catch (error: any) { if (error.response?.status === 401 && onSessionExpired) onSessionExpired(); else setLoadError(true); }
     finally { setLoading(false); }
   }
   useEffect(() => { void loadProducts(); }, []);
@@ -100,12 +100,13 @@ export default function PointOfSaleTab({ onCompleted }: { onCompleted: () => voi
       }
       setSaving(true);
       try {
-        const { data } = await api.post("/api/admin/pos/sales", payload);
+        const { data } = await api.post(`${apiPath}/sales`, payload);
         setCompleted(data.sale);
         setPending(null);
         setUncertain(false);
         onCompleted();
       } catch (error: any) {
+        if (error.response?.status === 401 && onSessionExpired) { onSessionExpired(); return; }
         const unknownOutcome = !error.response || error.response.status >= 500;
         setUncertain(unknownOutcome);
         if (!unknownOutcome) { setPending(null); void loadProducts(); }
