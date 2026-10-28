@@ -22,3 +22,12 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(response => response, error => {
+  const url = error.config?.url || "";
+  if (url.startsWith("/api/admin/") && !url.includes("/auth/") &&
+      (error.response?.status === 401 || error.response?.data?.code === "ACCOUNT_BLOCKED")) {
+    window.dispatchEvent(new Event("aca_admin_session_ended"));
+  }
+  return Promise.reject(error);
+});

@@ -12,11 +12,11 @@ type Log = {
   stockHandling?: string | null; relatedRecordType?: string | null; relatedRecordId?: string | null;
 };
 const handlingLabels: Record<string, string> = {
-  UNAVAILABLE: "Unavailable / missing", RETURN_TO_STOCK: "Returned to stock", RESERVED: "Reserved for order",
+  UNAVAILABLE: "Unavailable / missing", POS_REVERSAL: "POS sale reversed", RETURN_TO_STOCK: "Returned to stock", RESERVED: "Reserved for order",
   SOLD: "Sold", NO_STOCK_CHANGE: "No stock movement",
 };
 const recordLabels: Record<string, string> = {
-  ORDER: "Order", PRODUCT: "Product", WASTE: "Waste record", MANUFACTURING_BATCH: "Manufacturing batch",
+  POS_REVERSAL: "POS reversal", ORDER: "Order", PRODUCT: "Product", WASTE: "Waste record", MANUFACTURING_BATCH: "Manufacturing batch",
   PROCESSING_BATCH: "Processing batch", CARCASS_BATCH: "Carcass batch",
 };
 const copyId = (value?: string | null) => value ? <Typography.Text copyable>{value}</Typography.Text> : "—";

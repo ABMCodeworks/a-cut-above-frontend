@@ -223,17 +223,19 @@ export default function UsersTab({
 
   async function toggleUserActive(user: AdminUserRecord, isActive: boolean) {
     try {
-      await api.put(`/api/admin/users/${user.id}`, {
-        name: user.name ?? null,
-        email: user.email,
-        isActive,
-        permissions: normalizePermissions(user.permissions),
-      });
-      message.success(isActive ? "User activated" : "User disabled");
+      await api.patch(`/api/admin/users/${user.id}/access`, { isActive });
+      message.success(isActive ? "User unblocked" : "User blocked and signed out");
       onReload();
     } catch (e: any) {
       message.error(e?.response?.data?.error || "Failed to update user");
     }
+  }
+
+  async function logoutUser(user: AdminUserRecord) {
+    try {
+      await api.post(`/api/admin/users/${user.id}/logout`);
+      message.success("User signed out of all sessions");
+    } catch (e: any) { message.error(e?.response?.data?.error || "Failed to log out user"); }
   }
 
   async function deleteUser(user: AdminUserRecord) {
@@ -263,7 +265,7 @@ export default function UsersTab({
       key: "isActive",
       width: 120,
       render: (_: any, u: AdminUserRecord) =>
-        u.isActive ? <Tag color="green">Active</Tag> : <Tag>Disabled</Tag>,
+        u.isActive ? <Tag color="green">Active</Tag> : <Tag color="red">Blocked</Tag>,
     },
     {
       title: "Permissions",
@@ -283,15 +285,13 @@ export default function UsersTab({
     {
       title: "",
       key: "actions",
-      width: 240,
+      width: 420,
       render: (_: any, u: AdminUserRecord) =>
         canManageUsers ? (
           <Space>
             <Button onClick={() => openEdit(u)}>Edit</Button>
-            <Switch
-              checked={u.isActive}
-              onChange={(checked) => toggleUserActive(u, checked)}
-            />
+            <Button danger={u.isActive} onClick={() => toggleUserActive(u, !u.isActive)}>{u.isActive ? "Block" : "Unblock"}</Button>
+            <Button onClick={() => logoutUser(u)}>Log out all sessions</Button>
             <Popconfirm
               title="Delete this user?"
               description="This cannot be undone."
@@ -374,7 +374,7 @@ export default function UsersTab({
 
           {editingUser ? <>
             <Form.Item name="password" label="New password (optional)" rules={[{ min: 12, message: "Minimum 12 characters" }]}><Input.Password autoComplete="new-password" /></Form.Item>
-            <Form.Item name="isActive" label="Active" valuePropName="checked"><Switch /></Form.Item>
+            <Form.Item name="isActive" label="Account access" valuePropName="checked"><Switch checkedChildren="Active" unCheckedChildren="Blocked" /></Form.Item>
           </> : <Alert style={{ marginBottom: 16 }} type="info" showIcon title="Generate a link and a separate code. The recipient will choose their own name and password. Both are required to create the account." />}
 
           <Form.Item

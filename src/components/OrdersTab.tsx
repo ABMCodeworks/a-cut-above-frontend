@@ -34,11 +34,13 @@ import {
   PlusOutlined,
   SettingOutlined,
   SearchOutlined,
+  UndoOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import writeXlsxFile from "write-excel-file/browser";
 
 import { useSearchParams } from "../lib/router";
+import { reconcilePackingDraft } from "../lib/packingDraft";
 import { matchesOrderSearch } from "../lib/orderSearch";
 import { api, API_BASE } from "../api/client";
 import type {
@@ -119,6 +121,10 @@ const REMOVED_STOCK_OPTIONS = [
   { value: "UNAVAILABLE", label: "Unavailable / missing — do not add to stock" },
   { value: "RETURN_TO_STOCK", label: "Packs are available — return to stock" },
 ];
+
+function needsStockChoice(order: AdminOrder | null) {
+  return Boolean(order && (order.stockReserved ?? (!isWholesaleOrder(order) || order.status === "OUT_FOR_DELIVERY" || order.status === "DELIVERED")));
+}
 
 function activeProductDiscount(product?: AdminCreateProduct) {
   const now = Date.now();
@@ -241,6 +247,7 @@ function itemProductLabel(item: AdminOrderItem) {
 }
 
 function orderProfit(order: AdminOrder) {
+  if (order.posReversedAt) return 0;
   return (order.items || []).reduce((total, item) => {
     const costPrice = Number((item as any).product?.costPrice || 0);
     const revenue = Number((item as any).lineTotal || 0);
@@ -424,6 +431,7 @@ function OrderTable({
   onEdit,
   onOpenWaste,
   onOpenAmend,
+  onReversePos,
 }: {
   orders: AdminOrder[];
   isMobile: boolean;
@@ -438,6 +446,7 @@ function OrderTable({
   onEdit: (order: AdminOrder) => void;
   onOpenWaste: (order: AdminOrder, item: AdminOrderItem) => void;
   onOpenAmend: (order: AdminOrder, item: AdminOrderItem) => void;
+  onReversePos?: (order: AdminOrder) => void;
 }) {
   const expandedColumns = useMemo(
     () =>
@@ -511,6 +520,7 @@ function OrderTable({
                 <Button
                   danger
                   size="small"
+                  disabled={Boolean(order.posRequestId)}
                   onClick={() => onOpenWaste(order, it)}
                 >
                   Waste
@@ -546,6 +556,7 @@ function OrderTable({
                 {value || "—"}
               </span>
               {row.posRequestId && <Tag color="purple">Point of Sale</Tag>}
+              {row.posReversedAt && <Tooltip title={`${fmtDate(row.posReversedAt)} · ${row.posReversalReason}`}><Tag color="red">Reversed</Tag></Tooltip>}
               <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.25 }}>
                 {new Date(row.createdAt).toLocaleDateString()}
               </Text>
@@ -672,7 +683,8 @@ function OrderTable({
           width: 125,
           render: (_: any, row: AdminOrder) => (
             <div style={{ display: "grid", gap: 2 }}>
-              <span>{money(row.total)}</span>
+              <span>{money(row.posReversedAt ? 0 : row.total)}</span>
+              {row.posReversedAt && <Text type="secondary" style={{ fontSize: 11 }}>Original {money(row.total)}</Text>}
               <Text type="secondary" style={{ fontSize: 11 }}>
                 Profit {money(orderProfit(row))}
               </Text>
@@ -685,6 +697,7 @@ function OrderTable({
           width: 124,
           render: (_: any, row: AdminOrder) => (
             <Space size={4} wrap={false}>
+              {row.posRequestId && !row.posReversedAt && onReversePos && <Tooltip title="Reverse POS sale"><Button aria-label="Reverse POS sale" danger size="small" icon={<UndoOutlined />} onClick={() => onReversePos(row)} /></Tooltip>}
               {String(row.status).toUpperCase() !== "DELIVERED" ? (
                 <Tooltip title="Edit order">
                   <Button
@@ -728,6 +741,7 @@ function OrderTable({
       isMobile,
       onDelete,
       onDownloadDeliveryNote,
+      onReversePos,
       onEdit,
       onOpenPacking,
       onStatusUpdate,
@@ -768,6 +782,7 @@ function OrderTable({
 
           return (
             <div style={{ padding: isMobile ? 4 : 8 }}>
+              {order.posReversedAt && <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={`POS sale reversed · ${fmtDate(order.posReversedAt)}`} description={order.posReversalReason} />}
               {String(order.pricingTier || "").toUpperCase() ===
               "WHOLESALE" ? (
                 <Alert
@@ -920,12 +935,16 @@ export default function OrdersTab({
   const screens = useBreakpoint();
   const isMobile = !screens.md;
 
+  const canReversePos = Boolean(_permissions?.some(permission => permission === "admin.full" || permission === "pos.manage"));
+  const [reversingOrder, setReversingOrder] = useState<AdminOrder | null>(null);
+  const [reversalReason, setReversalReason] = useState("");
+  const [savingReversal, setSavingReversal] = useState(false);
   const [displayOrders, setDisplayOrders] = useState([] as AdminOrder[]);
   const [schedules, setSchedules] = useState([] as DeliverySchedule[]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([] as React.Key[]);
   const [orderView, setOrderView] = useState<"active" | "archive">("active");
   const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<
-    "ALL" | "RETAIL" | "WHOLESALE"
+    "ALL" | "RETAIL" | "WHOLESALE" | "POS"
   >("ALL");
 
   const [auditSearchParams] = useSearchParams();
@@ -948,7 +967,7 @@ export default function OrdersTab({
   const [deliveryRunScheduleId, setDeliveryRunScheduleId] = useState("");
   const [deliveryRunLocationId, setDeliveryRunLocationId] = useState("");
   const [deliveryRunPurchaseType, setDeliveryRunPurchaseType] = useState<
-    "ALL" | "RETAIL" | "WHOLESALE"
+    "ALL" | "RETAIL" | "WHOLESALE" | "POS"
   >("ALL");
 
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
@@ -1222,7 +1241,7 @@ export default function OrdersTab({
 
       if (
         purchaseTypeFilter !== "ALL" &&
-        String(o.pricingTier || "RETAIL").toUpperCase() !== purchaseTypeFilter
+        (purchaseTypeFilter === "POS" ? !o.posRequestId : String(o.pricingTier || "RETAIL").toUpperCase() !== purchaseTypeFilter)
       ) {
         return false;
       }
@@ -1298,7 +1317,7 @@ export default function OrdersTab({
     ]);
 
     const total = visibleOrders.reduce(
-      (sum, order) => sum + Number((order as any).total || 0),
+      (sum, order) => sum + Number(order.posReversedAt ? 0 : order.total || 0),
       0,
     );
 
@@ -1311,7 +1330,7 @@ export default function OrdersTab({
 
   const allOrderSummary = useMemo(() => {
     const total = displayOrders.reduce(
-      (sum, order) => sum + Number((order as any).total || 0),
+      (sum, order) => sum + Number(order.posReversedAt ? 0 : order.total || 0),
       0,
     );
 
@@ -1359,6 +1378,26 @@ export default function OrdersTab({
   function closeOrderEditor() {
     setCreateOrderOpen(false);
     setEditingOrder(null);
+  }
+
+  async function reversePosSale() {
+    if (!reversingOrder || !reversalReason.trim()) {
+      message.error("Enter a reason for reversing this sale");
+      return;
+    }
+    setSavingReversal(true);
+    try {
+      const { data } = await api.post(`/api/admin/pos/sales/${reversingOrder.id}/reverse`, { reason: reversalReason.trim() });
+      setDisplayOrders(previous => previous.map(order => order.id === data.sale.id ? { ...order, ...data.sale } : order));
+      setReversingOrder(null);
+      setReversalReason("");
+      message.success("POS sale reversed and stock restored. Reason saved in the audit log.");
+      onReload();
+    } catch (error: any) {
+      message.error(error?.response?.data?.error || "Could not reverse this sale. Retry to confirm its status.");
+    } finally {
+      setSavingReversal(false);
+    }
   }
 
   async function handleDelete(orderId: string, orderNo: string) {
@@ -1510,7 +1549,7 @@ export default function OrdersTab({
     try {
       const res = await api.put(
         `/api/admin/orders/${amendOrder.id}/items/${amendItem.id}`,
-        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: amendStockAction },
+        { qty: cleanQty, notes: amendReason.trim(), removedStockAction: needsStockChoice(amendOrder) ? amendStockAction : "UNAVAILABLE" },
       );
       const updated = res.data?.order as AdminOrder;
 
@@ -1522,8 +1561,9 @@ export default function OrdersTab({
         ),
       );
 
+      syncPackingOrder(updated);
       message.success(
-        amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; removed reserved packs returned to stock",
+        !needsStockChoice(amendOrder) ? "Order quantity updated" : amendStockAction === "UNAVAILABLE" ? "Order updated without returning unavailable packs to stock" : "Order quantity amended; removed reserved packs returned to stock",
       );
       setAmendOrder(null);
       setAmendItem(null);
@@ -1534,6 +1574,20 @@ export default function OrdersTab({
     } finally {
       setSavingAmend(false);
     }
+  }
+
+  function syncPackingOrder(updated: AdminOrder) {
+    if (!packingOrder || packingOrder.id !== updated.id) return;
+    const defaults: Record<string, PackingStateItem> = {};
+    for (const item of updated.items || []) {
+      defaults[item.id] = {
+        itemId: item.id,
+        packed: isKgItem(item) && parseExistingWeights(item).every(w => Number(w.value) > 0),
+        weights: isKgItem(item) ? parseExistingWeights(item) : [],
+      };
+    }
+    setPackingItems(previous => reconcilePackingDraft(packingOrder.items, updated.items, previous, defaults));
+    setPackingOrder(updated);
   }
 
   function openPacking(order: AdminOrder) {
@@ -1692,6 +1746,7 @@ export default function OrdersTab({
 
       onReload();
     } catch (e: any) {
+      setPackingInitialsOpen(false);
       message.error(e?.response?.data?.error || "Failed to save packing");
     } finally {
       setSavingPacking(false);
@@ -1825,7 +1880,7 @@ export default function OrdersTab({
       message.error("Add each product only once and adjust its quantity");
       return;
     }
-    if (reducedOrderItems.length && !removedStockAction) {
+    if (reducedOrderItems.length && needsStockChoice(editingOrder) && !removedStockAction) {
       message.error("Choose whether the removed packs are unavailable or can be returned to stock.");
       return;
     }
@@ -1838,7 +1893,7 @@ export default function OrdersTab({
     try {
       const payload = {
         expectedUpdatedAt: editingOrder?.updatedAt,
-        removedStockAction: reducedOrderItems.length ? removedStockAction : undefined,
+        removedStockAction: reducedOrderItems.length ? (needsStockChoice(editingOrder) ? removedStockAction : "UNAVAILABLE") : undefined,
         customerName: createCustomerName.trim(),
         customerPhone: createCustomerPhone.trim(),
         customerEmail: createCustomerEmail.trim(),
@@ -1861,6 +1916,7 @@ export default function OrdersTab({
 
       if (editingOrder && res.data?.order) {
         const updated = res.data.order as AdminOrder;
+        syncPackingOrder(updated);
         setDisplayOrders((prev) =>
           prev.map((order) => (order.id === updated.id ? updated : order)),
         );
@@ -2039,6 +2095,7 @@ export default function OrdersTab({
       (window) => window.id === selectedDeliveryRunWindowId,
     );
     const ordersToExport = displayOrders.filter((o) => {
+      if (o.posReversedAt) return false;
       if (exportingSelection) {
         return selectedIds.has(String(o.id));
       }
@@ -2208,7 +2265,7 @@ export default function OrdersTab({
             : "Unknown schedule";
 
           const orderTotal = schedGroup.orders.reduce(
-            (s, o) => s + Number((o as any).total || 0),
+            (s, o) => s + Number(o.posReversedAt ? 0 : o.total || 0),
             0,
           );
 
@@ -2243,6 +2300,7 @@ export default function OrdersTab({
                 onEdit={openOrderEditor}
                 onOpenWaste={openWasteModal}
                 onOpenAmend={openAmendModal}
+                onReversePos={canReversePos ? order => { setReversingOrder(order); setReversalReason(""); } : undefined}
               />
             ),
           };
@@ -2276,6 +2334,7 @@ export default function OrdersTab({
                   onEdit={openOrderEditor}
                   onOpenWaste={openWasteModal}
                   onOpenAmend={openAmendModal}
+                onReversePos={canReversePos ? order => { setReversingOrder(order); setReversalReason(""); } : undefined}
                 />
               ),
             },
@@ -2377,6 +2436,7 @@ export default function OrdersTab({
                 }}
                 options={[
                   { value: "ALL", label: "All purchases" },
+                  { value: "POS", label: "POS only" },
                   { value: "RETAIL", label: "Retail only" },
                   { value: "WHOLESALE", label: "Wholesale only" },
                 ]}
@@ -2534,6 +2594,7 @@ export default function OrdersTab({
                     }}
                     options={[
                       { value: "ALL", label: "All purchases" },
+                  { value: "POS", label: "POS only" },
                       { value: "RETAIL", label: "Retail only" },
                       { value: "WHOLESALE", label: "Wholesale only" },
                     ]}
@@ -2635,6 +2696,7 @@ export default function OrdersTab({
             }}
             options={[
               { value: "ALL", label: "All purchases" },
+                  { value: "POS", label: "POS only" },
               { value: "RETAIL", label: "Retail only" },
               { value: "WHOLESALE", label: "Wholesale only" },
             ]}
@@ -2761,7 +2823,7 @@ export default function OrdersTab({
           showIcon
           style={{ marginBottom: 12 }}
           message="Delivered orders remain available here"
-          description="Open a delivery location or the Wholesale Business Orders group to view each order. Expand an order to see its products, business details, documents, or returned waste."
+          description="Expand a group to view orders, including POS sales. Use Reverse POS sale on a POS order to restore stock and record a reversal reason."
         />
       ) : null}
 
@@ -2890,6 +2952,7 @@ export default function OrdersTab({
 	            }}
 	            options={[
 	              { value: "ALL", label: "All purchases" },
+                  { value: "POS", label: "POS only" },
 	              { value: "RETAIL", label: "Retail only" },
 	              { value: "WHOLESALE", label: "Wholesale only" },
 	            ]}
@@ -2949,7 +3012,7 @@ export default function OrdersTab({
         title={
           packingOrder ? `Pack Order — ${packingOrder.orderNo}` : "Pack Order"
         }
-        open={!!packingOrder}
+        open={!!packingOrder && !createOrderOpen}
         onCancel={() => {
           setPackingOrder(null);
           setPackingItems({});
@@ -2961,6 +3024,9 @@ export default function OrdersTab({
       >
         {packingOrder ? (
           <div style={{ display: "grid", gap: 14 }}>
+            <Button icon={<EditOutlined />} onClick={() => openOrderEditor(packingOrder)}>
+              Edit order (keep entered weights)
+            </Button>
             <Alert
               type={packingValidation.ok ? "success" : "warning"}
               showIcon
@@ -3042,8 +3108,11 @@ export default function OrdersTab({
                 };
 
                 return (
+                  <div key={item.id}>
+                  <Button size="small" icon={<EditOutlined />} style={{ marginBottom: 6 }} onClick={() => openAmendModal(packingOrder, item)}>
+                    Adjust quantity / remove item
+                  </Button>
                   <PackingItemRow
-                    key={item.id}
                     item={item}
                     state={state}
                     isMobile={isMobile}
@@ -3093,11 +3162,24 @@ export default function OrdersTab({
                       })
                     }
                   />
+                  </div>
                 );
               })}
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal title={reversingOrder ? `Reverse POS sale — ${reversingOrder.orderNo}` : "Reverse POS sale"}
+        open={Boolean(reversingOrder)} onCancel={() => { if (!savingReversal) setReversingOrder(null); }}
+        onOk={reversePosSale} okText="Reverse sale and restore stock" okButtonProps={{ danger: true, disabled: !reversalReason.trim() }}
+        confirmLoading={savingReversal} closable={!savingReversal} maskClosable={!savingReversal}>
+        <Alert type="warning" showIcon message={`Reverse ${money(reversingOrder?.total || 0)} and restore the sold stock?`}
+          description="Only reverse a mistaken sale or goods that have been returned and can be sold again. The original sale stays in Archive, and the reversal is excluded from revenue. Any payment refund must be handled separately." style={{ marginBottom: 16 }} />
+        <label><Text strong>Reason for reversal (required)</Text>
+          <Input.TextArea aria-label="Reason for POS reversal" value={reversalReason} maxLength={2000} showCount rows={3} disabled={savingReversal}
+            onChange={event => setReversalReason(event.target.value)} placeholder="e.g. Sale entered twice; no goods left stock" style={{ marginTop: 8 }} />
+        </label>
       </Modal>
 
       <Modal
@@ -3118,7 +3200,7 @@ export default function OrdersTab({
               type="info"
               showIcon
               message="Reduce the order quantity"
-              description="Choose unavailable for missing packs, or return to stock for packs that are physically available. Only previously reserved packs can be returned to stock."
+              description={needsStockChoice(amendOrder) ? "Choose unavailable for missing packs, or return to stock for packs that are physically available. Only previously reserved packs can be returned to stock." : "This order has not reserved stock. Reducing its quantity will not add packs to stock."}
             />
 
             <div>
@@ -3144,7 +3226,7 @@ export default function OrdersTab({
               </Text>
             </div>
 
-            <div>
+            {needsStockChoice(amendOrder) && <div>
               <Text type="secondary">What happened to the removed packs?</Text>
               <Select<RemovedStockAction>
                 aria-label="Stock handling for reduced order quantity"
@@ -3153,7 +3235,7 @@ export default function OrdersTab({
                 options={REMOVED_STOCK_OPTIONS}
                 style={{ width: "100%", marginTop: 6 }}
               />
-            </div>
+            </div>}
 
             <div>
               <Text type="secondary">Reason (optional)</Text>
@@ -3450,7 +3532,7 @@ export default function OrdersTab({
                 </div>
               </Card>
             ))}
-            {reducedOrderItems.length > 0 && (
+            {reducedOrderItems.length > 0 && needsStockChoice(editingOrder) && (
               <Alert
                 type="warning"
                 showIcon

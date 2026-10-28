@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Collapse, Empty, Form, Input, InputNumber, Re
 import { DeleteOutlined, ReloadOutlined, ShoppingCartOutlined } from "@ant-design/icons";
 import "./PointOfSaleTab.css";
 import { api } from "../api/client";
+import { createSaleReference } from "../lib/saleReference";
 
 const { Text, Paragraph } = Typography;
 type Product = {
@@ -89,7 +90,7 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
         }
         if (!ready) { message.error("Check product quantities, weights and prices before completing the sale"); return; }
         payload = {
-          requestId: crypto.randomUUID(), customerName: values.customerName || "", customerPhone: values.customerPhone || "", notes: values.notes || "",
+          requestId: createSaleReference(), customerName: values.customerName || "", customerPhone: values.customerPhone || "", notes: values.notes || "",
           orderDiscountPercent,
           items: lines.map(line => {
             const product = products.find(p => p.id === line.productId)!;
@@ -113,7 +114,7 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
         message.error(unknownOutcome ? "Could not confirm the sale. Retry below using the same sale reference." : error.response?.data?.error || "Could not complete sale");
       } finally { setSaving(false); }
     } catch (error: any) {
-      if (!error?.errorFields) message.error("Check the sale details and try again");
+      if (!error?.errorFields) message.error(error instanceof Error ? error.message : "Could not prepare the sale. Refresh the page and try again.");
     } finally { submitting.current = false; }
   }
 

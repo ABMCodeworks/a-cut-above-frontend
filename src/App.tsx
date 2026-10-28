@@ -62,6 +62,17 @@ export default function App() {
     }
   }, [isAdminRoute, location.pathname, checkAdminAuth]);
 
+  useEffect(() => {
+    const endSession = () => {
+      if (!isAdminRoute || location.pathname === "/admin") return;
+      setAdminAuthed(false);
+      navigate("/admin", { replace: true });
+      message.info("Your session ended. Sign in again or contact your administrator.");
+    };
+    window.addEventListener("aca_admin_session_ended", endSession);
+    return () => window.removeEventListener("aca_admin_session_ended", endSession);
+  }, [isAdminRoute, location.pathname, navigate]);
+
   const refreshAdmin = useCallback(() => {
     checkAdminAuth();
     navigate(0);
@@ -71,17 +82,17 @@ export default function App() {
     try {
       await api.post("/api/admin/auth/logout");
     } catch {
-      // ignore network/logout errors
-    } finally {
-      localStorage.removeItem("adminToken");
-      localStorage.removeItem("aca_admin_token");
-      localStorage.removeItem("token");
-      localStorage.removeItem("access_token");
-
-      setAdminAuthed(false);
-      message.success("Logged out");
-      navigate("/admin");
+      message.error("Could not log out. Please retry.");
+      return;
     }
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("aca_admin_token");
+    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
+
+    setAdminAuthed(false);
+    message.success("Logged out");
+    navigate("/admin");
   }, [navigate]);
 
   return (

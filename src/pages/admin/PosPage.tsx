@@ -28,7 +28,7 @@ export default function PosPage() {
   }
   if (checking) return <Spin aria-label="Checking POS session" />;
   if (user) return <>
-    <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}><Typography.Title level={2} style={{ margin: 0 }}>Point of Sale</Typography.Title><Space><span>{user.username}</span><Button onClick={logout} loading={saving}>Sign out</Button></Space></Space>
+    <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}><Typography.Title level={2} style={{ margin: 0 }}>Point of Sale</Typography.Title><Space><span>{user.username}</span><Button onClick={logout} loading={saving}>Log out</Button></Space></Space>
     {error && <Alert type="error" title={error} />}
     <PointOfSaleTab apiPath="/api/pos" onCompleted={() => {}} onSessionExpired={() => { setUser(null); setError("Your POS session expired. Sign in again."); }} />
   </>;

@@ -178,7 +178,7 @@ export default function DashboardTab({
   }
 
   const filteredOrders = useMemo(() => {
-    let list = [...(orders || [])];
+    let list = (orders || []).filter(order => !order.posReversedAt);
 
     if (windowId) {
       list = list.filter(

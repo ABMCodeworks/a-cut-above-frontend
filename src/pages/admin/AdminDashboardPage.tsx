@@ -118,9 +118,13 @@ export type AdminOrderItem = {
 };
 
 export type AdminOrder = {
+  stockReserved?: boolean;
   id: string;
   orderNo: string;
   posRequestId?: string | null;
+  posReversedAt?: string | null;
+  posReversalReason?: string | null;
+  posReversedBy?: string | null;
   customerName: string;
   customerPhone: string;
   customerEmail?: string | null;
