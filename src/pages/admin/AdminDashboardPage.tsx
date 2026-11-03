@@ -413,6 +413,37 @@ export default function AdminDashboardPage() {
     };
   }, [isAuthed, canViewOrders, activeTabKey, loading]);
 
+  // Stock can change when a packer saves an order in another tab or browser.
+  useEffect(() => {
+    if (!isAuthed || !canViewProducts || !["orders", "products"].includes(activeTabKey) || loading) return;
+
+    const controller = new AbortController();
+    let inFlight = false;
+    const refreshStock = async () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      try {
+        const res = await api.get("/api/admin/products", { signal: controller.signal });
+        if (!controller.signal.aborted) setProducts(res.data.products || []);
+      } catch {
+        // Keep the last stock view on a temporary connection failure.
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void refreshStock();
+    window.addEventListener("focus", refreshStock);
+    document.addEventListener("visibilitychange", refreshStock);
+    const interval = window.setInterval(refreshStock, 30_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshStock);
+      document.removeEventListener("visibilitychange", refreshStock);
+    };
+  }, [isAuthed, canViewProducts, activeTabKey, loading]);
+
   const handleTabChange = useCallback(
     (key: string) => {
       const next = new URLSearchParams(searchParams);
