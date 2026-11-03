@@ -191,13 +191,15 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
           </div>
           <div className="pos-summary-line"><Text>Total discount</Text><Text>{money(round(subtotal - total))}</Text></div>
           <div className="pos-grand-total"><Text>Total to collect</Text><strong>{money(total)}</strong><Text type="secondary">{lines.length} product{lines.length === 1 ? "" : "s"} · Calculated from product prices</Text></div>
-          <Collapse ghost items={[{ key: "customer", forceRender: true, label: "Customer details & notes (optional)", children:
-            <Form form={form} layout="vertical" disabled={locked}>
-              <Form.Item name="customerName" label="Customer name"><Input maxLength={200} placeholder="Walk-in customer" /></Form.Item>
+          <Form form={form} layout="vertical" disabled={locked}>
+            <Form.Item name="customerName" label="Sale / customer name (optional)" extra="Use this name to find the sale in Orders.">
+              <Input maxLength={200} placeholder="Enter a name for this sale" />
+            </Form.Item>
+            <Collapse ghost items={[{ key: "customer", forceRender: true, label: "Phone & notes (optional)", children: <>
               <Form.Item name="customerPhone" label="Phone"><Input maxLength={60} inputMode="tel" placeholder="Customer phone number" /></Form.Item>
               <Form.Item name="notes" label="Notes"><Input.TextArea rows={2} maxLength={2000} placeholder="Add a note about this sale" /></Form.Item>
-            </Form>
-          }]} />
+            </> }]} />
+          </Form>
           <Paragraph type="secondary">Completing this sale records revenue and deducts stock immediately. No WhatsApp messages are sent and no delivery is scheduled.</Paragraph>
           <Button type="primary" size="large" block loading={saving} disabled={!uncertain && (loading || loadError || !ready)} onClick={completeSale}>{uncertain ? "Retry same sale" : `Complete sale · ${money(total)}`}</Button>
         </Card>

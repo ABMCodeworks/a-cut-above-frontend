@@ -972,6 +972,7 @@ export default function OrdersTab({
 
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
 
+  const [packingShortages, setPackingShortages] = useState<Array<{ productId: string; productName: string; requested: number; available: number }>>([]);
   const [packingOrder, setPackingOrder] = useState<AdminOrder | null>(null);
   const [packingItems, setPackingItems] = useState<
     Record<string, PackingStateItem>
@@ -1591,6 +1592,7 @@ export default function OrdersTab({
   }
 
   function openPacking(order: AdminOrder) {
+    setPackingShortages([]);
     const state: Record<string, PackingStateItem> = {};
 
     for (const item of order.items || []) {
@@ -1692,6 +1694,7 @@ export default function OrdersTab({
       return;
     }
 
+    setPackingShortages([]);
     setSavingPacking(true);
 
     try {
@@ -1747,7 +1750,12 @@ export default function OrdersTab({
       onReload();
     } catch (e: any) {
       setPackingInitialsOpen(false);
-      message.error(e?.response?.data?.error || "Failed to save packing");
+      const shortages = e?.response?.data?.shortages;
+      if (Array.isArray(shortages) && shortages.length) {
+        setPackingShortages(shortages);
+      } else {
+        message.error(e?.response?.data?.error || "Failed to save packing");
+      }
     } finally {
       setSavingPacking(false);
     }
@@ -3024,6 +3032,12 @@ export default function OrdersTab({
       >
         {packingOrder ? (
           <div style={{ display: "grid", gap: 14 }}>
+            {packingShortages.length > 0 && <Alert type="error" showIcon message="Stock shortages at last packing attempt" description={<>
+              <ul style={{ margin: "8px 0", paddingLeft: 20 }}>{packingShortages.map(item => <li key={item.productId}>
+                <strong>{item.productName}</strong>: {item.requested} packet(s) required, {item.available} available ({Math.max(0, item.requested - item.available)} short).
+              </li>)}</ul>
+              Adjust quantities or add stock, then save packing to check again.
+            </>} />}
             <Button icon={<EditOutlined />} onClick={() => openOrderEditor(packingOrder)}>
               Edit order (keep entered weights)
             </Button>
