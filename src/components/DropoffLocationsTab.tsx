@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import {
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Drawer,
   Form,
@@ -43,6 +44,7 @@ export type DeliveryLocation = {
   isActive: boolean;
   minimumOrderValue: number;
   minimumOrderAppliesToWholesale: boolean;
+  requiresPersonalAddress: boolean;
   schedules?: DeliverySchedule[];
 };
 
@@ -52,6 +54,7 @@ type LocationFormValues = {
   isActive: boolean;
   minimumOrderValue: number;
   minimumOrderAppliesToWholesale: boolean;
+  requiresPersonalAddress: boolean;
 };
 
 type ScheduleFormValues = {
@@ -428,6 +431,7 @@ export default function DeliveryLocationsTab({
       isActive: true,
       minimumOrderValue: 0,
       minimumOrderAppliesToWholesale: false,
+      requiresPersonalAddress: false,
     });
     setLocationModalOpen(true);
   }
@@ -443,6 +447,7 @@ export default function DeliveryLocationsTab({
       minimumOrderAppliesToWholesale: Boolean(
         r.minimumOrderAppliesToWholesale,
       ),
+      requiresPersonalAddress: r.requiresPersonalAddress,
     });
     setLocationModalOpen(true);
   }
@@ -456,6 +461,7 @@ export default function DeliveryLocationsTab({
       minimumOrderValue: Number(values.minimumOrderValue || 0),
       minimumOrderAppliesToWholesale:
         values.minimumOrderAppliesToWholesale ?? false,
+      requiresPersonalAddress: values.requiresPersonalAddress ?? false,
     };
 
     try {
@@ -802,6 +808,10 @@ export default function DeliveryLocationsTab({
             tooltip="When enabled, wholesale customers choosing this location must also meet its minimum order value."
           >
             <Switch />
+          </Form.Item>
+
+          <Form.Item name="requiresPersonalAddress" valuePropName="checked">
+            <Checkbox>Require a personal address at retail checkout</Checkbox>
           </Form.Item>
 
           <Form.Item

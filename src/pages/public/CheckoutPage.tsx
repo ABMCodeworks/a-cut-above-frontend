@@ -55,6 +55,7 @@ type DropoffLocation = {
   sortOrder: number;
   minimumOrderValue: number;
   minimumOrderAppliesToWholesale: boolean;
+  requiresPersonalAddress: boolean;
   nextSchedule?: {
     cutoffDate: string;
     deliveryDate: string;
@@ -216,6 +217,7 @@ export default function CheckoutPage() {
         minimumOrderAppliesToWholesale: Boolean(
           x.minimumOrderAppliesToWholesale,
         ),
+        requiresPersonalAddress: Boolean(x.requiresPersonalAddress),
         nextSchedule: x.nextSchedule ?? null,
       }));
 
@@ -262,9 +264,7 @@ export default function CheckoutPage() {
     return dropoffs.find((d) => d.id === selectedDropoffId) ?? null;
   }, [dropoffs, selectedDropoffId]);
 
-  const isMutare = useMemo(() => {
-    return /mutare/i.test(selectedDropoff?.name || "");
-  }, [selectedDropoff]);
+  const requiresPersonalAddress = selectedDropoff?.requiresPersonalAddress;
 
   const cartSubtotal = useMemo(() => {
     return items.reduce((sum, it) => sum + getEstimatedLineTotal(it), 0);
@@ -454,11 +454,7 @@ export default function CheckoutPage() {
         businessName: isWholesale ? businessName : "",
         requestedDeliveryDate: isWholesale ? requestedDeliveryDate : "",
         dropoffLocationId,
-        personalAddress: isWholesale
-          ? personalAddress
-          : isMutare
-            ? personalAddress
-            : "",
+        ...(isWholesale || requiresPersonalAddress ? { personalAddress } : {}),
         notes: isWholesale ? notes : "",
         discountCode: discountPreview?.code ?? discountCodeInput.trim(),
         legalAccepted: values.legalAccepted === true,
@@ -831,9 +827,10 @@ export default function CheckoutPage() {
               </Form.Item>
 
               {!isWholesale ? (
-                isMutare ? (
+                requiresPersonalAddress ? (
                   <Form.Item
                     name="personalAddress"
+                    preserve={false}
                     label={
                       <span style={{ letterSpacing: 1, fontWeight: 800 }}>
                         PERSONAL ADDRESS
@@ -842,7 +839,7 @@ export default function CheckoutPage() {
                     rules={[
                       {
                         required: true,
-                        message: "Please enter your personal address for Mutare",
+                        message: "Please enter your personal address",
                       },
                       {
                         validator: (_, value) => {

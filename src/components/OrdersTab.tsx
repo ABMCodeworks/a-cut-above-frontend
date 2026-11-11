@@ -3393,7 +3393,7 @@ export default function OrdersTab({
               <Input
                 value={createPersonalAddress}
                 onChange={(e) => setCreatePersonalAddress(e.target.value)}
-                placeholder="Required for Mutare deliveries"
+                placeholder="Enter the delivery address"
               />
             </div>
 
