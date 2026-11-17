@@ -243,6 +243,7 @@ function processingFieldLabel([field, row, key]: Array<string | number>) {
     case "outputs": return "Finished products";
     case "sourceAllocations": return "Quarter contributions";
     case "inputWeightKg": return "Source weight";
+    case "sourceParts":
     case "sourcePart":
     case "sourceOutputId":
     case "carcassBatchId": return "Cut from";
@@ -252,6 +253,11 @@ function processingFieldLabel([field, row, key]: Array<string | number>) {
   }
 }
 
+function formatProcessingIssue(path: Array<string | number>, message: string) {
+  const label = processingFieldLabel(path);
+  return label ? `${label}: ${message}` : message;
+}
+
 function processingErrorMessages(error: unknown): string[] {
   if (!isAxiosError<ProcessingErrorBody>(error)) return ["Processing failed. Try again."];
   if (!error.response) return ["Could not reach the server. Check your connection and try again."];
@@ -259,10 +265,7 @@ function processingErrorMessages(error: unknown): string[] {
 
   const data = error.response.data;
   if (data?.issues?.length) {
-    return data.issues.map(({ path, message }) => {
-      const label = processingFieldLabel(path);
-      return label ? `${label}: ${message}` : message;
-    });
+    return data.issues.map(({ path, message }) => formatProcessingIssue(path, message));
   }
   const details = [
     ...(data?.details?.formErrors ?? []),
@@ -733,7 +736,10 @@ export default function CarcassWeightsTab({
     } catch (error) {
       const fields = (error as { errorFields?: Array<{ name: Array<string | number>; errors: string[] }> } | null)?.errorFields;
       console.error("Processing form validation failed", fields ?? []);
-      setProcessingErrors(["Check the highlighted fields before saving."]);
+      const errors = fields?.flatMap(({ name, errors }) =>
+        errors.map(message => formatProcessingIssue(name, message)),
+      );
+      setProcessingErrors(errors?.length ? errors : ["Could not validate the form. Reopen it and try again."]);
       if (fields?.[0]) processingForm.scrollToField(fields[0].name, { focus: true });
       return;
     }
@@ -1225,12 +1231,12 @@ export default function CarcassWeightsTab({
               type="error"
               showIcon
               style={{ marginTop: 12 }}
-              title="Processing could not be saved"
-              description={processingErrors.length === 1 ? processingErrors[0] : (
+              title={processingErrors[0]}
+              description={processingErrors.length > 1 ? (
                 <ul style={{ margin: 0, paddingInlineStart: 20 }}>
-                  {processingErrors.map((error, index) => <li key={index}>{error}</li>)}
+                  {processingErrors.slice(1).map((error, index) => <li key={index}>{error}</li>)}
                 </ul>
-              )}
+              ) : undefined}
             />
           )}
         </Form>
