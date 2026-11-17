@@ -24,9 +24,21 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(response => response, error => {
-  const url = error.config?.url || "";
+  const url = (error.config?.url || "").split(/[?#]/, 1)[0];
+  const status = error.response?.status;
+  const data = error.response?.data;
+  if (!axios.isCancel(error)) {
+    console.error("API request failed", {
+      method: error.config?.method?.toUpperCase(),
+      url,
+      status,
+      code: data?.code ?? error.code,
+      error: status && status < 500 ? data?.error : error.message,
+      details: status && status < 500 ? data?.issues ?? data?.details : undefined,
+    });
+  }
   if (url.startsWith("/api/admin/") && !url.includes("/auth/") &&
-      (error.response?.status === 401 || error.response?.data?.code === "ACCOUNT_BLOCKED")) {
+      (status === 401 || data?.code === "ACCOUNT_BLOCKED")) {
     window.dispatchEvent(new Event("aca_admin_session_ended"));
   }
   return Promise.reject(error);

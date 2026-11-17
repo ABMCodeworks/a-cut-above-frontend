@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -18,6 +19,8 @@ import {
   message,
 } from "antd";
 import dayjs from "dayjs";
+import { SearchOutlined } from "@ant-design/icons";
+import { isAxiosError } from "axios";
 import { api } from "../api/client";
 import type { AdminPermission } from "../pages/admin/AdminDashboardPage";
 
@@ -222,6 +225,54 @@ type ProcessingForm = {
   outputs: Array<{ productId: string; totalWeightKg: number; packetCount: number }>;
 };
 
+type ProcessingErrorBody = {
+  error?: string;
+  issues?: Array<{ path: Array<string | number>; message: string }>;
+  details?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> };
+};
+
+function processingFieldLabel([field, row, key]: Array<string | number>) {
+  if (field === "outputs" && typeof row === "number") {
+    const label = key === "totalWeightKg" ? "Processed weight" : key === "packetCount" ? "Packets" : "Product";
+    return `Product row ${row + 1} · ${label}`;
+  }
+  if (field === "sourceAllocations" && typeof row === "number") {
+    return `Quarter contribution ${row + 1}`;
+  }
+  switch (field) {
+    case "outputs": return "Finished products";
+    case "sourceAllocations": return "Quarter contributions";
+    case "inputWeightKg": return "Source weight";
+    case "sourcePart":
+    case "sourceOutputId":
+    case "carcassBatchId": return "Cut from";
+    case "processedAt": return "Processing date";
+    case "notes": return "Notes";
+    default: return "";
+  }
+}
+
+function processingErrorMessages(error: unknown): string[] {
+  if (!isAxiosError<ProcessingErrorBody>(error)) return ["Processing failed. Try again."];
+  if (!error.response) return ["Could not reach the server. Check your connection and try again."];
+  if (error.response.status >= 500) return ["The server could not save the processing batch. Try again."];
+
+  const data = error.response.data;
+  if (data?.issues?.length) {
+    return data.issues.map(({ path, message }) => {
+      const label = processingFieldLabel(path);
+      return label ? `${label}: ${message}` : message;
+    });
+  }
+  const details = [
+    ...(data?.details?.formErrors ?? []),
+    ...Object.entries(data?.details?.fieldErrors ?? {}).flatMap(([field, errors]) =>
+      errors.map(message => `${processingFieldLabel([field]) || field}: ${message}`),
+    ),
+  ];
+  return details.length ? details : [data?.error || "Processing failed. Try again."];
+}
+
 type SaleForm = {
   sourcePart: SourcePart;
   soldAt: dayjs.Dayjs;
@@ -360,10 +411,12 @@ export default function CarcassWeightsTab({
   const [target, setTarget] = useState<CarcassBatchRecord | null>(null);
   const [processingSourceOutput, setProcessingSourceOutput] = useState<Output | null>(null);
   const [editingProcessingBatch, setEditingProcessingBatch] = useState<ProcessingBatch | null>(null);
+  const [processingErrors, setProcessingErrors] = useState<string[]>([]);
   const [processingOutputForSale, setProcessingOutputForSale] = useState<Output | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [recordView, setRecordView] = useState("active");
+  const [tagSearch, setTagSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [openingNew, setOpeningNew] = useState(false);
   const openingNewRef = useRef(false);
@@ -599,6 +652,7 @@ export default function CarcassWeightsTab({
           : ["WHOLE_CARCASS"];
       const firstPart =
         parts.find((part) => availableFor(record, part) > 0.005) || parts[0];
+      setProcessingErrors([]);
       processingForm.resetFields();
       processingForm.setFieldsValue({
         sourcePart: firstPart,
@@ -624,6 +678,7 @@ export default function CarcassWeightsTab({
       setTarget(record);
       setProcessingSourceOutput(output);
       setEditingProcessingBatch(null);
+      setProcessingErrors([]);
       processingForm.resetFields();
       processingForm.setFieldsValue({
         processedAt: dayjs(),
@@ -646,6 +701,7 @@ export default function CarcassWeightsTab({
       setTarget(record);
       setEditingProcessingBatch(batch);
       setProcessingSourceOutput(batch.sourceOutput || null);
+      setProcessingErrors([]);
       processingForm.resetFields();
       processingForm.setFieldsValue({
         sourcePart: batch.sourcePart || undefined,
@@ -670,37 +726,64 @@ export default function CarcassWeightsTab({
 
   async function saveProcessing() {
     if (!target) return;
-    const values = await processingForm.validateFields();
-    if (outputPreview > n(values.inputWeightKg) + 0.005) {
-      message.error("Finished-product weight cannot exceed the source input");
+    setProcessingErrors([]);
+    let values: ProcessingForm;
+    try {
+      values = await processingForm.validateFields();
+    } catch (error) {
+      const fields = (error as { errorFields?: Array<{ name: Array<string | number>; errors: string[] }> } | null)?.errorFields;
+      console.error("Processing form validation failed", fields ?? []);
+      setProcessingErrors(["Check the highlighted fields before saving."]);
+      if (fields?.[0]) processingForm.scrollToField(fields[0].name, { focus: true });
       return;
     }
-    if (mixedSources && Math.abs(allocations.reduce((total, source) => total + n(source.weightKg), 0) - outputPreview) > 0.005) {
-      message.error("Quarter contributions must add up to the finished-product weight");
+
+    const sourceAllocations = mixedSources ? values.sourceAllocations : undefined;
+    const outputs = values.outputs ?? [];
+    const finishedWeight = outputs.reduce((total, output) => total + n(output.totalWeightKg), 0);
+    const inputWeight = n(values.inputWeightKg);
+    const contributionWeight = (sourceAllocations ?? []).reduce((total, source) => total + n(source.weightKg), 0);
+    const errors: string[] = [];
+    if (!outputs.length) errors.push("Add at least one finished product.");
+    if (finishedWeight > inputWeight + 0.005) {
+      errors.push(`Finished products weigh ${kg(finishedWeight)}. Reduce their weight to ${kg(inputWeight)} or less.`);
+    }
+    if (sourceAllocations && Math.abs(contributionWeight - finishedWeight) > 0.005) {
+      errors.push(`Quarter contributions total ${kg(contributionWeight)}. Adjust them to match the finished-product weight of ${kg(finishedWeight)}.`);
+    }
+    if (errors.length) {
+      console.error("Processing weight validation failed", errors);
+      setProcessingErrors(errors);
       return;
     }
+
     setSaving(true);
     try {
       const payload = {
-        ...values,
-        sourceAllocations: mixedSources ? values.sourceAllocations : undefined,
-        ...(processingSourceOutput
-          ? { sourceOutputId: processingSourceOutput.id }
-          : { carcassBatchId: target.id, sourcePart: mixedSources ? undefined : (values.sourceParts?.[0] || values.sourcePart) }),
         processedAt: values.processedAt.toISOString(),
+        notes: values.notes,
+        outputs,
+        sourceAllocations,
       };
       if (editingProcessingBatch) {
         await api.put(`/api/admin/carcass-weights/process/${editingProcessingBatch.id}`, payload);
       } else {
-        await api.post("/api/admin/carcass-weights/process", payload);
+        await api.post("/api/admin/carcass-weights/process", {
+          ...payload,
+          inputWeightKg: values.inputWeightKg,
+          ...(processingSourceOutput
+            ? { sourceOutputId: processingSourceOutput.id }
+            : { carcassBatchId: target.id, sourcePart: mixedSources ? undefined : (values.sourceParts?.[0] ?? values.sourcePart) }),
+        });
       }
       message.success(editingProcessingBatch ? "Processing batch updated" : "Finished products added to stock");
       setProcessingOpen(false);
       setProcessingSourceOutput(null);
       setEditingProcessingBatch(null);
       onReload();
-    } catch (error: any) {
-      message.error(error?.response?.data?.error || "Processing failed");
+    } catch (error) {
+      if (!isAxiosError(error)) console.error("Processing failed", error);
+      setProcessingErrors(processingErrorMessages(error));
     } finally {
       setSaving(false);
     }
@@ -939,16 +1022,33 @@ export default function CarcassWeightsTab({
     },
   ], [canManage, records]);
 
+  const tagQuery = tagSearch.trim().toLowerCase();
+  const matchingRecords = records.filter(record => record.animalId.toLowerCase().includes(tagQuery));
+  const completedCount = matchingRecords.filter(record => record.completedAt).length;
+  const visibleRecords = matchingRecords
+    .filter(record => Boolean(record.completedAt) === (recordView === "completed"))
+    .sort((a, b) => dayjs(b.weighedAt).valueOf() - dayjs(a.weighedAt).valueOf());
+
   return (
     <Card title="Carcass Weights" extra={canManage ? <Button type="primary" loading={openingNew} disabled={openingNew} onClick={openNew}>New Entry</Button> : null}>
+      <Input
+        allowClear
+        aria-label="Search by tag or batch number"
+        placeholder="Search by tag or batch number"
+        prefix={<SearchOutlined />}
+        value={tagSearch}
+        onChange={event => setTagSearch(event.target.value)}
+        style={{ width: "100%", maxWidth: 320 }}
+      />
       <Tabs activeKey={recordView} onChange={setRecordView} items={[
-        { key: "active", label: `Active (${records.filter((record) => !record.completedAt).length})` },
-        { key: "completed", label: `Completed (${records.filter((record) => record.completedAt).length})` },
+        { key: "active", label: `Active (${matchingRecords.length - completedCount})` },
+        { key: "completed", label: `Completed (${completedCount})` },
       ]} />
       <Table
         loading={loading}
         rowKey="id"
-        dataSource={(records || []).filter((record) => recordView === "completed" ? Boolean(record.completedAt) : !record.completedAt).sort((a, b) => dayjs(b.weighedAt).valueOf() - dayjs(a.weighedAt).valueOf())}
+        dataSource={visibleRecords}
+        locale={tagQuery ? { emptyText: "No matching tags or batch numbers in this tab" } : undefined}
         columns={columns as any}
         rowClassName={(record) =>
           Math.abs(overallProcessingLoss(record) || 0) > 0.01
@@ -1071,7 +1171,9 @@ export default function CarcassWeightsTab({
       </Modal>
 
       <Modal title={`${editingProcessingBatch ? "Edit Processing Batch" : processingSourceOutput ? `Process ${processingSourceOutput.product?.name || "Processing Product"} Further` : "Process Products"} — ${target?.animalId || ""}`} open={processingOpen} onCancel={() => { setProcessingOpen(false); setProcessingSourceOutput(null); setEditingProcessingBatch(null); }} onOk={saveProcessing} confirmLoading={saving} okText={editingProcessingBatch ? "Save Changes" : "Process and Add Stock"} width={900}>
-        <Form form={processingForm} layout="vertical">
+        <Form form={processingForm} layout="vertical" onValuesChange={() => {
+          if (processingErrors.length) setProcessingErrors([]);
+        }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
             {processingSourceOutput ? <Card size="small"><Text type="secondary">Processing product source</Text><div><b>{processingSourceOutput.product?.name}</b></div><div>{editingProcessingBatch ? `${kg(editingProcessingBatch.inputWeightKg)} used` : `${kg(availableOutputWeight(processingSourceOutput))} available`}</div></Card> : <Form.Item name="sourceParts" label="Cut From" rules={[{ required: true, message: "Select at least one source" }]} extra="Select multiple quarters to combine them in the same packet.">
               <Select mode="multiple" disabled={Boolean(editingProcessingBatch)} options={target ? sourceOptions.map((part) => ({ value: part, label: `${partLabels[part]} — ${kg(availableFor(target, part))} remaining`, disabled: availableFor(target, part) <= 0.005 })) : []} onChange={(parts: SourcePart[]) => {
@@ -1079,8 +1181,11 @@ export default function CarcassWeightsTab({
                 processingForm.setFieldsValue({ sourcePart: parts[0], inputWeightKg: parts.reduce((total, part) => total + availableFor(target, part), 0), sourceAllocations: parts.map((part) => ({ sourcePart: part, weightKg: allocations.find((source) => source.sourcePart === part)?.weightKg || 0 })) });
               }} />
             </Form.Item>}
-            <Form.Item name="processedAt" label="Processing Date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item name="inputWeightKg" label={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Remaining Source Weight (kg)" : "Source Weight Used (kg)"} rules={[{ required: true }]} extra={editingProcessingBatch ? "The original processing source and input weight stay locked; edit the resulting products below." : target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Total remaining weight of the selected quarters. Enter the weight contributed by each quarter below." : undefined}><InputNumber min={0.01} max={processingSourceOutput && !editingProcessingBatch ? availableOutputWeight(processingSourceOutput) : undefined} step={0.1} disabled={Boolean(editingProcessingBatch) || !processingSourceOutput} style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="processedAt" label="Processing Date" rules={[{ required: true, message: "Choose the processing date." }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
+            <Form.Item name="inputWeightKg" label={target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Remaining Source Weight (kg)" : "Source Weight Used (kg)"} rules={[
+              { required: true, message: "Enter the source weight used." },
+              { type: "number", min: 0.01, message: processingSourceOutput ? "Enter at least 0.01 kg." : "Select a source with weight remaining. If its dry weight is missing, record it first." },
+            ]} extra={editingProcessingBatch ? "The original processing source and input weight stay locked; edit the resulting products below." : target && kindOf(target.meatCategory) === "beef" && !processingSourceOutput ? "Total remaining weight of the selected quarters. Enter the weight contributed by each quarter below." : undefined}><InputNumber min={0.01} max={processingSourceOutput && !editingProcessingBatch ? availableOutputWeight(processingSourceOutput) : undefined} step={0.1} disabled={Boolean(editingProcessingBatch) || !processingSourceOutput} style={{ width: "100%" }} /></Form.Item>
           </div>
           {mixedSources && !processingSourceOutput ? <>
             <Text type="secondary">Enter each quarter’s contribution to the finished products. For one mixed packet, enter it once below with the combined weight. Contributions must total the finished-product weight.</Text>
@@ -1101,14 +1206,33 @@ export default function CarcassWeightsTab({
               const processingOnly = trackedOutput ? !trackedOutput.stockTracked : Boolean(chosenProduct?.isForProcessing);
               return <Card key={field.key} size="small"><div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10 }}>
               <Form.Item {...field} name={[field.name, "productId"]} label="Product" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={outputProducts.filter((product) => product.id !== processingSourceOutput?.productId).map((product) => ({ value: product.id, label: `${productOptionLabel(product)}${product.isForProcessing ? " — process further later" : ""}` }))} onChange={(productId) => { const product = outputProducts.find((candidate) => candidate.id === productId); processingForm.setFieldValue(["outputs", field.name, "packetCount"], product?.isForProcessing ? 0 : Math.max(1, n(processingForm.getFieldValue(["outputs", field.name, "packetCount"])))); }} /></Form.Item>
-              <Form.Item {...field} name={[field.name, "totalWeightKg"]} label="Processed Weight (kg)" rules={[{ required: true }]}><InputNumber min={0.01} step={0.1} style={{ width: "100%" }} /></Form.Item>
-              <Form.Item {...field} name={[field.name, "packetCount"]} label={processingOnly ? "Packets (not shop stock)" : "Sellable Packets"} rules={[{ required: true }]}><InputNumber min={processingOnly ? 0 : 1} step={1} disabled={processingOnly} style={{ width: "100%" }} /></Form.Item>
+              <Form.Item {...field} name={[field.name, "totalWeightKg"]} label="Processed Weight (kg)" rules={[
+                { required: true, message: "Enter the processed weight." },
+                { type: "number", min: 0.01, message: "Enter at least 0.01 kg." },
+              ]}><InputNumber min={0.01} step={0.1} style={{ width: "100%" }} /></Form.Item>
+              <Form.Item {...field} name={[field.name, "packetCount"]} label={processingOnly ? "Packets (not shop stock)" : "Sellable Packets"} rules={[
+                { required: true, message: "Enter the packet count." },
+                { type: "integer", min: processingOnly ? 0 : 1, message: processingOnly ? "Enter 0 or a whole number of packets." : "Enter at least 1 packet as a whole number." },
+              ]}><InputNumber min={processingOnly ? 0 : 1} step={1} disabled={processingOnly} style={{ width: "100%" }} /></Form.Item>
               <Button danger disabled={fields.length === 1} style={{ marginTop: 30 }} onClick={() => remove(field.name)}>Remove</Button>
             </div>{processingOnly ? <Text type="secondary">This weight stays available here and can be converted later with “Process Further”; it is not added to the shop.</Text> : null}</Card>})}
             <Button onClick={() => add({ productId: "", totalWeightKg: 0, packetCount: 1 })}>Add Another Product</Button>
           </div>}</Form.List>
           <Form.Item name="notes" label="Notes" style={{ marginTop: 12 }}><Input.TextArea rows={2} /></Form.Item>
           <Card size="small" className={outputPreview > 0.005 && Math.abs(n(processingInput) - outputPreview) > 0.005 ? "aca-processing-loss-card" : ""}><Space size="large" wrap><Text><b>Source:</b> {kg(processingInput)}</Text><Text><b>Products:</b> {kg(outputPreview)}</Text><Text type={Math.abs(n(processingInput) - outputPreview) > 0.005 ? "danger" : undefined}><b>Loss:</b> {kg(Math.max(0, n(processingInput) - outputPreview))} ({pctText(processLoss)})</Text></Space></Card>
+          {processingErrors.length > 0 && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginTop: 12 }}
+              title="Processing could not be saved"
+              description={processingErrors.length === 1 ? processingErrors[0] : (
+                <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+                  {processingErrors.map((error, index) => <li key={index}>{error}</li>)}
+                </ul>
+              )}
+            />
+          )}
         </Form>
       </Modal>
 
