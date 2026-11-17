@@ -1226,7 +1226,7 @@ export default function OrdersTab({
     }
   }, [deliveryRunScheduleId, activeExportScheduleIds]);
 
-  const visibleOrders = useMemo(() => {
+  const grouped = useMemo((): LocationGroup[] => {
     const filteredOrders = displayOrders.filter((o) => {
       if (!matchesOrderSearch(o, orderSearch)) return false;
       const anyO = o as any;
@@ -1258,28 +1258,9 @@ export default function OrdersTab({
       return true;
     });
 
-    if (orderView === "archive") {
-      filteredOrders.sort(
-        (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-      );
-    }
-
-    return filteredOrders;
-  }, [
-    displayOrders,
-    orderSearch,
-    filterLocationId,
-    filterScheduleId,
-    orderView,
-    purchaseTypeFilter,
-  ]);
-
-  const grouped = useMemo((): LocationGroup[] => {
-    if (orderView === "archive") return [];
-
     const byLocation = new Map<string, LocationGroup>();
 
-    for (const order of visibleOrders) {
+    for (const order of filteredOrders) {
       const anyO = order as any;
       const isWholesale =
         String(order.pricingTier || "").toUpperCase() === "WHOLESALE";
@@ -1320,9 +1301,22 @@ export default function OrdersTab({
     return Array.from(byLocation.values()).sort((a, b) =>
       a.locationName.localeCompare(b.locationName),
     );
-  }, [visibleOrders, schedules, orderView]);
+  }, [
+    displayOrders,
+    orderSearch,
+    schedules,
+    filterLocationId,
+    filterScheduleId,
+    orderView,
+    purchaseTypeFilter,
+  ]);
 
   const visibleOrderSummary = useMemo(() => {
+    const visibleOrders = grouped.flatMap((locGroup) => [
+      ...locGroup.unscheduled,
+      ...Array.from(locGroup.schedules.values()).flatMap((g) => g.orders),
+    ]);
+
     const total = visibleOrders.reduce(
       (sum, order) => sum + Number(order.posReversedAt ? 0 : order.total || 0),
       0,
@@ -1333,7 +1327,7 @@ export default function OrdersTab({
       total,
       average: visibleOrders.length ? total / visibleOrders.length : 0,
     };
-  }, [visibleOrders]);
+  }, [grouped]);
 
   const allOrderSummary = useMemo(() => {
     const total = displayOrders.reduce(
@@ -2266,6 +2260,7 @@ export default function OrdersTab({
         (a, b) => {
           const dateA = a.schedule?.cutoffDate ?? "";
           const dateB = b.schedule?.cutoffDate ?? "";
+          if (orderView === "archive") return dateB.localeCompare(dateA);
           return dateA.localeCompare(dateB);
         },
       );
@@ -2389,7 +2384,7 @@ export default function OrdersTab({
           ),
       };
     });
-  }, [grouped, isMobile, expandedRowKeys, selectedRowKeys, sendWhatsApp]);
+  }, [grouped, isMobile, expandedRowKeys, selectedRowKeys, sendWhatsApp, orderView]);
 
   const packingValidation = getPackingValidation(packingOrder);
 
@@ -2837,32 +2832,14 @@ export default function OrdersTab({
           showIcon
           style={{ marginBottom: 12 }}
           message="Delivered orders remain available here"
-          description="Use Reverse POS sale on a POS order to restore stock and record a reversal reason."
+          description="Expand a group to view orders, including POS sales. Use Reverse POS sale on a POS order to restore stock and record a reversal reason."
         />
       ) : null}
 
-      {visibleOrders.length === 0 ? (
+      {grouped.length === 0 ? (
         <Empty
           description={orderSearch.trim() ? "No matching orders. Try another name or order number, or adjust your filters." : "No orders found"}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
-      ) : orderView === "archive" ? (
-        <OrderTable
-          key={orderSearch}
-          orders={visibleOrders}
-          isMobile={isMobile}
-          expandedRowKeys={expandedRowKeys}
-          onExpandedRowKeysChange={setExpandedRowKeys}
-          onStatusUpdate={handleStatusUpdate}
-          onDelete={handleDelete}
-          onDownloadDeliveryNote={downloadDeliveryNote}
-          selectedRowKeys={selectedRowKeys}
-          onSelectedRowKeysChange={setSelectedRowKeys}
-          onOpenPacking={openPacking}
-          onEdit={openOrderEditor}
-          onOpenWaste={openWasteModal}
-          onOpenAmend={openAmendModal}
-          onReversePos={canReversePos ? order => { setReversingOrder(order); setReversalReason(""); } : undefined}
         />
       ) : (
         <Collapse
