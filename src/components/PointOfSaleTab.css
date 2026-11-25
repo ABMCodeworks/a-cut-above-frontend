@@ -14,6 +14,8 @@
 .pos-line-remove { grid-column: 2; grid-row: 1; margin-top: 24px; }
 .pos-line label { font-size: 13px; font-weight: 500; }
 .pos-line .ant-input-number { min-height: 40px; display: flex; align-items: center; }
+.pos-quantity-help { display: block; margin-top: 4px; font-size: 12px; }
+.pos-line .pos-weight-label { margin-top: 12px; }
 .pos-summary-line { display: flex; justify-content: space-between; gap: 16px; padding: 14px 0; }
 .pos-line-total { display: flex; flex-direction: column; gap: 2px; }
 .pos-line-total label { margin-bottom: 4px; }

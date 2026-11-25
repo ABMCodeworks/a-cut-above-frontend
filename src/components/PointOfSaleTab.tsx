@@ -25,7 +25,7 @@ const lineValue = (line: Line, p: Product, orderPercent = 0) => {
   return round(afterProduct - round(afterProduct * orderPercent / 100));
 };
 const availableKg = (p: Product) => p.isForProcessing ? Number(p.processingStockWeightKg) : Number(Math.max(0, p.stockQty * Number(p.avgWeightG || 0) / 1000 - Number(p.posPartialWeightKg || 0)).toFixed(6));
-const stockLabel = (p: Product) => weighed(p) ? `${availableKg(p).toFixed(3)} kg${!p.isForProcessing ? " (from average pack weight)" : ""}` : `${p.stockQty} packs`;
+const stockLabel = (p: Product) => `${p.stockQty} packs${p.isForProcessing ? ` · ${availableKg(p).toFixed(3)} kg` : weighed(p) && p.avgWeightG ? ` · approx. ${availableKg(p).toFixed(3)} kg` : ""}`;
 const money = (n: number | string) => `$${Number(n).toFixed(2)}`;
 
 export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos", onSessionExpired }: { onCompleted: () => void; apiPath?: string; onSessionExpired?: () => void }) {
@@ -49,9 +49,11 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
   }, 0) / 100;
   const issue = (line: Line, product: Product) => {
     if (!Number.isFinite(line.discountPercent) || line.discountPercent < 0 || line.discountPercent > 100) return "Enter a discount between 0 and 100%.";
+    if (line.qty !== null && (!Number.isInteger(line.qty) || line.qty < (product.isForProcessing ? 0 : 1) || line.qty > product.stockQty)) return "Check packs against available stock.";
     if (weighed(product)) {
-      if (!product.isForProcessing && !product.avgWeightG) return "Set an average pack weight in Products to sell by kg.";
-      if (!line.weightKg || line.weightKg <= 0 || line.weightKg > availableKg(product)) return "Check kg against available stock.";
+      if (line.qty === null && !product.isForProcessing && !product.avgWeightG) return "Enter the number of packs sold, or set an average pack weight in Products.";
+      if (!line.weightKg || !Number.isFinite(line.weightKg) || line.weightKg <= 0 || line.weightKg > 999999) return "Enter the total weight sold in kg.";
+      if ((product.isForProcessing || line.qty === null) && line.weightKg > availableKg(product)) return "Check kg against available stock.";
     } else if (line.qty === null || !Number.isInteger(line.qty) || line.qty < 1 || line.qty > product.stockQty) return "Check packs against available stock.";
     return null;
   };
@@ -94,7 +96,7 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
           orderDiscountPercent,
           items: lines.map(line => {
             const product = products.find(p => p.id === line.productId)!;
-            return { productId: line.productId, discountPercent: line.discountPercent, unitPrice: defaultPrice(product), ...(weighed(product) ? { weightKg: line.weightKg! } : { qty: line.qty! }) };
+            return { productId: line.productId, discountPercent: line.discountPercent, unitPrice: defaultPrice(product), ...(line.qty !== null ? { qty: line.qty } : {}), ...(weighed(product) ? { weightKg: line.weightKg! } : {}) };
           }),
         };
         setPending(payload);
@@ -123,13 +125,13 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
       <Button type="primary" onClick={() => { setCompleted(null); setLines([]); setOrderDiscountPercent(0); form.resetFields(); void loadProducts(); }}>New sale</Button>
     } />
     {completed.items.map(item => <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: "1px solid #eee" }}>
-      <Text>{item.productName} · {item.weightKg != null ? `${Number(item.weightKg)} kg` : `${Number(item.qty)} packs`}</Text><Text strong>{money(item.lineTotal)}</Text>
+      <Text>{item.productName} · {Number(item.qty)} packs{item.weightKg != null ? ` · ${Number(item.weightKg)} kg` : ""}</Text><Text strong>{money(item.lineTotal)}</Text>
     </div>)}
     <Paragraph type="secondary" style={{ marginTop: 16 }}>Stock has been deducted. This completed sale is included in Orders and revenue reports.</Paragraph>
   </Card>;
 
   return <div className="pos-workspace">
-    <div className="pos-heading"><div><Typography.Title level={3} style={{ margin: 0 }}>New sale</Typography.Title><Paragraph type="secondary">Enter kg or packs sold. Prices and totals are calculated automatically, with optional product and order discounts.</Paragraph></div><Tag icon={<ShoppingCartOutlined />}>Walk-in sale</Tag></div>
+    <div className="pos-heading"><div><Typography.Title level={3} style={{ margin: 0 }}>New sale</Typography.Title><Paragraph type="secondary">Enter packs sold and the total weight for weighed products. Prices and totals are calculated automatically, with optional product and order discounts.</Paragraph></div><Tag icon={<ShoppingCartOutlined />}>Walk-in sale</Tag></div>
     {loadError && <Alert type="error" showIcon title="Could not load products" action={<Button onClick={loadProducts}>Retry</Button>} style={{ marginBottom: 16 }} />}
     {uncertain && <Alert type="warning" showIcon title="The sale has not been confirmed" description="Retry the same sale below. Its reference prevents stock being deducted twice if it was already recorded." style={{ marginBottom: 16 }} />}
     <Row gutter={[24, 24]}>
@@ -137,7 +139,7 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
         <Card className="pos-products" title={`Products · ${lines.length}`} extra={<Button icon={<ReloadOutlined />} disabled={locked} loading={loading} onClick={loadProducts}>Refresh</Button>}>
           <Select<string | null> showSearch optionFilterProp="label" value={null} aria-label="Add a product" size="large" placeholder="Search and add a product…" style={{ width: "100%", marginBottom: 20 }} loading={loading} disabled={locked || loadError || loading}
             options={products.filter(p => !lines.some(line => line.productId === p.id)).map(p => ({ value: p.id, label: `${p.name}${p.category ? ` · ${p.category.name}` : ""} · ${stockLabel(p)}${p.isHiddenFromShop ? " · Hidden" : ""}${!p.isActive ? " · Inactive" : ""}${p.isForProcessing ? " · Processing" : ""}` }))}
-            onChange={id => { if (!id) return; setLines(current => [...current, { productId: id, qty: 1, weightKg: null, discountPercent: 0 }]); }}
+            onChange={id => { if (!id) return; const product = products.find(p => p.id === id); setLines(current => [...current, { productId: id, qty: product && weighed(product) ? null : 1, weightKg: null, discountPercent: 0 }]); }}
           />
           {loading && !products.length ? <Spin /> : !lines.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<><strong>Your sale is empty</strong><div>Search above to add your first product.</div></>} />}
           <Space orientation="vertical" style={{ width: "100%" }} size={16}>
@@ -157,8 +159,13 @@ export default function PointOfSaleTab({ onCompleted, apiPath = "/api/admin/pos"
                     </Space>
                   </div>
                   <div className="pos-line-quantity">
-                    <label>{weighed(product) ? "Kg sold" : "Number of packs"}</label>
-                    <InputNumber aria-label={`Quantity sold: ${product.name}`} min={weighed(product) ? 0.001 : 1} max={weighed(product) ? availableKg(product) : product.stockQty} precision={weighed(product) ? 3 : 0} step={weighed(product) ? 0.1 : 1} value={weighed(product) ? line.weightKg : line.qty} onChange={value => updateLine(product.id, weighed(product) ? { weightKg: value } : { qty: value })} disabled={locked} style={{ width: "100%" }} />
+                    <label>Number of packs</label>
+                    <InputNumber aria-label={`Packs sold: ${product.name}`} min={product.isForProcessing ? 0 : 1} max={product.stockQty} precision={0} step={1} value={line.qty} placeholder={weighed(product) ? "Auto from weight" : "Enter packs"} onChange={value => updateLine(product.id, { qty: value })} disabled={locked} style={{ width: "100%" }} />
+                    {weighed(product) && <>
+                      <Text type="secondary" className="pos-quantity-help">Leave blank to calculate packs from weight.</Text>
+                      <label className="pos-weight-label">Total weight (kg)</label>
+                      <InputNumber aria-label={`Total weight sold in kg: ${product.name}`} min={0.001} max={product.isForProcessing || line.qty === null ? Math.min(999999, availableKg(product)) : 999999} precision={3} step={0.1} value={line.weightKg} onChange={value => updateLine(product.id, { weightKg: value })} disabled={locked} style={{ width: "100%" }} />
+                    </>}
                   </div>
                   <div className="pos-line-discount">
                     <label>Product discount (%)</label>
